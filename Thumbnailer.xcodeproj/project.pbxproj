@@ -6,18 +6,52 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		5EC8AD572E65D56500AC4D4B /* ffmpeg in Resources */ = {isa = PBXBuildFile; fileRef = 5EC8AD562E65D56500AC4D4B /* ffmpeg */; };
-/* End PBXBuildFile section */
+/* Begin PBXCopyFilesBuildPhase section */
+		5EC8ADA12E65FE0F00AC4D4B /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		5EC8AD482E65D54C00AC4D4B /* Thumbnailer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Thumbnailer.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5EC8AD562E65D56500AC4D4B /* ffmpeg */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = ffmpeg; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5EC8ADEF2E66082C00AC4D4B /* Exceptions for "Thumbnailer" folder in "Thumbnailer" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets/ffmpeg,
+			);
+			target = 5EC8AD472E65D54C00AC4D4B /* Thumbnailer */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		5EC8ADF12E66083000AC4D4B /* Exceptions for "Thumbnailer" folder in "Copy Files" phase from "Thumbnailer" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				Assets/ffmpeg = (CodeSignOnCopy, );
+			};
+			buildPhase = 5EC8ADA12E65FE0F00AC4D4B /* CopyFiles */;
+			membershipExceptions = (
+				Assets/ffmpeg,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5EC8AD4A2E65D54C00AC4D4B /* Thumbnailer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5EC8ADEF2E66082C00AC4D4B /* Exceptions for "Thumbnailer" folder in "Thumbnailer" target */,
+				5EC8ADF12E66083000AC4D4B /* Exceptions for "Thumbnailer" folder in "Copy Files" phase from "Thumbnailer" target */,
+			);
 			path = Thumbnailer;
 			sourceTree = "<group>";
 		};
@@ -37,7 +71,6 @@
 		5EC8AD3F2E65D54C00AC4D4B = {
 			isa = PBXGroup;
 			children = (
-				5EC8AD562E65D56500AC4D4B /* ffmpeg */,
 				5EC8AD4A2E65D54C00AC4D4B /* Thumbnailer */,
 				5EC8AD492E65D54C00AC4D4B /* Products */,
 			);
@@ -61,6 +94,7 @@
 				5EC8AD442E65D54C00AC4D4B /* Sources */,
 				5EC8AD452E65D54C00AC4D4B /* Frameworks */,
 				5EC8AD462E65D54C00AC4D4B /* Resources */,
+				5EC8ADA12E65FE0F00AC4D4B /* CopyFiles */,
 			);
 			buildRules = (
 			);
@@ -115,7 +149,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5EC8AD572E65D56500AC4D4B /* ffmpeg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

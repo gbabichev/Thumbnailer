@@ -106,7 +106,14 @@ enum FFmpegVideoTrimmer {
             }
         }
         
-        // First priority: Check app bundle
+        // First priority: Check app bundle (Frameworks first, then Resources)
+        if let fwURL = Bundle.main.privateFrameworksURL?.appendingPathComponent("ffmpeg"),
+           FileManager.default.fileExists(atPath: fwURL.path) {
+            // Ensure it's executable
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                   ofItemAtPath: fwURL.path)
+            return FFmpegInfo(path: fwURL.path, source: .appBundle)
+        }
         if let bundlePath = Bundle.main.path(forResource: "ffmpeg", ofType: nil) {
             if FileManager.default.fileExists(atPath: bundlePath) {
                 // Make sure it's executable
@@ -178,7 +185,7 @@ enum FFmpegVideoTrimmer {
                 // Trim both start and end
                 let outputDuration = duration - options.trimStartSeconds - options.trimEndSeconds
                 args = [
-                    "-ss", String(options.trimStartSeconds),
+                    "-s", String(options.trimStartSeconds),
                     "-i", videoURL.path,
                     "-t", String(outputDuration),
                     "-c", "copy",
