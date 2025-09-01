@@ -1,0 +1,20 @@
+
+
+✅ Success/Complete
+❌ Error/Failure
+ℹ️ Info/Cancellation
+
+📁 Folder operations
+🖼️ Photo operations
+🎬 Video operations
+🗑️ Deletion/removal
+⚠️ Skip/warning
+🔍 Scanning/analysis
+✂️ Trimming/editing
+🔧 Tool/system info
+💾 Storage info
+📋 Summary/lists
+
+✓ Notification success
+! Notification warn
+ 

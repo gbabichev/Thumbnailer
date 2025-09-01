@@ -1,0 +1,29 @@
+//
+//  Compile-FFMpeg.txt
+//  Thumbnailer
+//
+//  Created by George Babichev on 8/18/25.
+//
+
+1. Install Brew
+2. brew install pkg-config nasm
+3. ./configure from below
+4. make -j$(sysctl -n hw.ncpu)
+
+
+
+./configure \
+  --disable-everything \
+  --enable-protocol=file \
+  --enable-demuxer=mov \
+  --enable-muxer=mp4 \
+  --enable-static \
+  --disable-shared \
+  --enable-small \
+  --arch=arm64 \
+  --target-os=darwin \
+  --extra-cflags="-Os -flto -ffunction-sections -fdata-sections" \
+  --extra-ldflags="-Wl,-dead_strip -flto"
+
+
+
