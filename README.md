@@ -4,7 +4,6 @@ A powerful **macOS app** for managing and processing photo & video
 collections with **automated thumbnail generation**, **contact sheet
 creation**, and smart media organization tools. ✨
 
-------------------------------------------------------------------------
 
 ## 🖥️ Screenshots 
 
@@ -13,7 +12,7 @@ creation**, and smart media organization tools. ✨
     <a href="Documentation/App2.png"><img src="Documentation/App2.png" width="45%"></a>
 </p>
 
-------------------------------------------------------------------------
+## 🖥️ User Interface
 
 ### 🔍 Smart Content Detection
 
@@ -50,44 +49,41 @@ creation**, and smart media organization tools. ✨
     - Move videos from individual subfolders to their parent folder.
     - Delete videos with no contact sheets in the parent. 
 
-------------------------------------------------------------------------
 
-## ⚡ Processing Modes
-
--   **Batch Processing** 🧩 → Multiple folders at once, with progress &
-    logs
--   **Smart Performance** 🚦 → Priority-aware, concurrent,
-    memory-efficient
-
-------------------------------------------------------------------------
-
-## 🖥️ User Interface
-
--   **Folder Management** 📂 → Drag-drop, table view, bulk actions
--   **Live Logging** 📜 → Real-time feedback, exportable
--   **Progress Tracking** ⏳ → Bars, percentages, stall detection
-
-------------------------------------------------------------------------
-
-## 🔔 Notifications & Status
+### 🔔 Notifications & Status
 
 -   **macOS Notifications** 🖥️ → Banner alerts when done
 -   **Dock Badges** 🎯 → Show completion state
 -   **Audio Alerts** 🔊 → For long jobs
 
-------------------------------------------------------------------------
 
-## 🗂️ File Format Support
+### 🗂️ File Format Support
 
 -   **Images** → JPG, PNG, HEIC, TIFF, BMP, WebP, GIF
 -   **Videos** → MP4 fully supported; others detected but limited
 
-------------------------------------------------------------------------
+### 📝 Logging
 
-## 🛡️ Technical Features
+- Persistent logs in `~/Library/Logs/Thumbnailer/`
 
--   **Reliability** ✅ Atomic file ops, error recovery, cancellation
--   **Performance** ⚡ ImageIO downsampling, concurrency, background
-    priority
--   **Logging** 📝 Persistent logs in `~/Library/Logs/Thumbnailer/`
 
+## 🖥️ Install & Minimum Requirements
+
+- macOS 15.0 or later  
+- **Apple Silicon only!**
+- ~20 MB free disk space  
+
+
+### ⚙️ Installation
+
+Download from Releases. It's signed & notarized!
+
+### ⚙️ Build it yourself!
+
+Clone the repo and build with Xcode:
+
+```bash
+git clone https://github.com/gbabichev/thumbnailer.git
+cd thumbnailer
+open thumbnailer.xcodeproj
+```
