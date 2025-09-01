@@ -7,23 +7,21 @@
 
 1. Install Brew
 2. brew install pkg-config nasm
+3. Set min version in the configure
 3. ./configure from below
 4. make -j$(sysctl -n hw.ncpu)
 
-
-
 ./configure \
+  --disable-autodetect \
   --disable-everything \
   --enable-protocol=file \
   --enable-demuxer=mov \
   --enable-muxer=mp4 \
+  --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb,aac_adtstoasc \
   --enable-static \
   --disable-shared \
   --enable-small \
   --arch=arm64 \
   --target-os=darwin \
-  --extra-cflags="-Os -flto -ffunction-sections -fdata-sections" \
-  --extra-ldflags="-Wl,-dead_strip -flto"
-
-
-
+  --extra-cflags="-mmacosx-version-min=15.0 -Os -flto -ffunction-sections -fdata-sections" \
+  --extra-ldflags="-Wl,-dead_strip -mmacosx-version-min=15.0 -flto"
