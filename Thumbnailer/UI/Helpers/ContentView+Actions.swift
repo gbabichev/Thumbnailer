@@ -252,29 +252,67 @@ extension ContentView {
         guard !isProcessing else { return }
         isProcessing = true
         logLines.removeAll()
-        
+
+        // Cancel any previously running delete task
         currentWork?.cancel()
+
+        // Take stable snapshots to avoid races if UI mutates while we work
+        let leafsSnapshot = leafFolders
+        let thumbName = thumbnailFolderName
+
         currentWork = Task(priority: .userInitiated) {
-            let progressTracker = createProgressTracker(total: leafFolders.count)
-            
-            for leaf in leafFolders {
+            // Create progress on main since it likely touches UI
+            let progressTracker = await MainActor.run { createProgressTracker(total: leafsSnapshot.count) }
+
+            // Early-out if cancelled before we start
+            if Task.isCancelled {
+                await MainActor.run {
+                    appendLog("ℹ️ Delete cancelled")
+                    isProcessing = false
+                    progressTracker.finish()
+                }
+                return
+            }
+
+            for leaf in leafsSnapshot {
+                // Check for cancellation at the top of each iteration
+                if Task.isCancelled {
+                    await MainActor.run {
+                        appendLog("ℹ️ Delete cancelled")
+                        isProcessing = false
+                        progressTracker.finish()
+                    }
+                    return
+                }
+
                 await MainActor.run { appendLog("🔍 Checking \(leaf.url.path)") }
-                let thumb = leaf.url.appendingPathComponent(thumbnailFolderName, isDirectory: true)
+                let thumb = leaf.url.appendingPathComponent(thumbName, isDirectory: true)
                 let fileExists = FileManager.default.fileExists(atPath: thumb.path)
+
                 if fileExists {
                     do {
                         try FileManager.default.removeItem(at: thumb)
-                        await MainActor.run { appendLog("  🗑️ Removed \(thumbnailFolderName) folder") }
+                        await MainActor.run { appendLog("  🗑️ Removed \(thumbName) folder") }
                     } catch {
                         await MainActor.run { appendLog("  ❌  Failed to remove: \(error.localizedDescription)") }
                     }
                 } else {
-                    await MainActor.run { appendLog("  ℹ️ No \(thumbnailFolderName) folder found") }
+                    await MainActor.run { appendLog("  ℹ️ No \(thumbName) folder found") }
                 }
-                
+
                 await MainActor.run { progressTracker.increment() }
             }
-            
+
+            // Final cancellation check before reporting success
+            if Task.isCancelled {
+                await MainActor.run {
+                    appendLog("ℹ️ Delete cancelled")
+                    isProcessing = false
+                    progressTracker.finish()
+                }
+                return
+            }
+
             await MainActor.run {
                 appendLog("ℹ️ Clean operation finished.")
                 isProcessing = false
