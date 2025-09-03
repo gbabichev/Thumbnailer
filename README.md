@@ -66,6 +66,10 @@ creation**, and smart media organization tools. ✨
 
 - Persistent logs in `~/Library/Logs/Thumbnailer/`
 
+## 🔍 Troubleshooting
+
+- **Running Slow?** - Hit the "Hide Log" eye button. If you're processing thousands of folders really quickly (like deleting thumbnail folders, or JPG/HEIC conversion), writing to the UI can lag. The text log will continue to update 
+
 
 ## 🖥️ Install & Minimum Requirements
 
@@ -87,3 +91,16 @@ git clone https://github.com/gbabichev/thumbnailer.git
 cd thumbnailer
 open thumbnailer.xcodeproj
 ```
+
+## 📝 Changelog
+
+### 1.1
+- Fixed "cancel task" not working on deletion of thumbnail folders. 
+- Added "Hide Log" to hide the log UI in case of thousands of files being processed - helps improve performance. 
+
+### 1.0
+- Initial release.
+
+## 📄 License
+
+MIT — free for personal and commercial use. 

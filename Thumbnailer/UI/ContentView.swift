@@ -103,6 +103,9 @@ struct ContentView: View {
     /// Bumped to refresh the log view (e.g., to auto‑scroll).
     @State var logDisplayEpoch: Int = 0
     
+    /// Controls whether the in‑app log is visible in the UI.
+    @State var showLog: Bool = true
+    
     // MARK: - User Settings
     
     /// Number of max tiles for video contact sheets.
@@ -142,6 +145,7 @@ struct ContentView: View {
     /// Persisted output format for thumbnails ("JPEG" or "HEIC").
     /// Backed by `ThumbnailFormat.rawValue`.
     @AppStorage("thumbnailFormat") var thumbnailFormatRaw: String = ThumbnailFormat.jpeg.rawValue
+
     
     /// Two‑way binding that converts the stored `photoSheetFitModeRaw` string
     /// into a typed `SheetFitMode` for the UI, and writes changes back.
@@ -178,7 +182,25 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 150, ideal: 200, max: 600)
         } detail: {
             progressSection
-            applog
+            if showLog {
+                applog
+            }
+            else {
+                VStack(spacing: 12) {
+                    Image(systemName: "eye.slash")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 48, height: 48)
+                        .foregroundStyle(.secondary)
+                    Text("Log hidden for performance")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("Log file is still being written to disk.\nSelect Actions in the Menu Bar to view")
+                        .font(.footnote)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .multilineTextAlignment(.center)
+            }
         }
         .frame(minWidth: 800, minHeight: 500)
         .dropDestination(

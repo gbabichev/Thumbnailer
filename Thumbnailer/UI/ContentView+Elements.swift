@@ -167,14 +167,14 @@ extension ContentView {
     var applog: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !logLines.isEmpty {
-                HStack {
-                    Text("Log")
-                    
+                HStack(alignment: .firstTextBaseline) {
+                    Label("Tip: Hide the log for faster performance", systemImage: "lightbulb")
+                        .font(.footnote)
+
                     Spacer()
                     
-                    Text("(\(logLines.count) lines)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("Log")
+                    
                 }
                 Divider()
             }
@@ -651,6 +651,14 @@ extension ContentView {
                 settingsPopoverContent
                     .interactiveDismissDisabled(thumbnailFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+
+            Button {
+                showLog.toggle()
+            } label: {
+                Label(showLog ? "Hide Log" : "Show Log",
+                      systemImage: showLog ? "eye" : "eye.slash")
+            }
+            .help(showLog ? "Hide the in‑app log" : "Show the in‑app log")
         }
         
         ToolbarItem(placement: .principal){

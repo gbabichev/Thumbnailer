@@ -211,7 +211,11 @@ extension ContentView {
                         leafFolders = leaves.map { LeafFolder(url: $0) }
                         let mediaType = scanMode == .photos ? "photo" : "video"
                         appendLog("\(scanMode == .photos ? "📸" : "🎬") Found \(leaves.count) \(mediaType) folder(s)")
-                        
+                        if (leaves.count > 500){
+                            appendLog("!!!!!!!!!!")
+                            appendLog("WARNING: LOTS OF FOLDERS FOUND! Hide the log during processing for increased performance!")
+                            appendLog("!!!!!!!!!!")
+                        }
                         if scanMode == .videos {
                             lastVideoLeafCount = leaves.count
                         }
@@ -256,15 +260,29 @@ extension ContentView {
         // Cancel any previously running delete task
         currentWork?.cancel()
 
-        // Take stable snapshots to avoid races if UI mutates while we work
+        // Stable snapshots to avoid races with UI changes
         let leafsSnapshot = leafFolders
         let thumbName = thumbnailFolderName
 
+        // Precompute immutable, Sendable inputs for tasks
+        let thumbPaths: [String] = leafsSnapshot.map {
+            $0.url.appendingPathComponent(thumbName, isDirectory: true).path
+        }
+        let total = thumbPaths.count
+
+        // Choose a sensible parallelism: I/O-bound, 4–8 is a good range
+        let maxParallel = min(max(4, ProcessInfo.processInfo.processorCount / 2), 8)
+
+        enum DeletionResult: Sendable {
+            case removed
+            case missing
+            case failed(path: String, error: String)
+        }
+
         currentWork = Task(priority: .userInitiated) {
-            // Create progress on main since it likely touches UI
-            let progressTracker = await MainActor.run { createProgressTracker(total: leafsSnapshot.count) }
+            let progressTracker = await MainActor.run { createProgressTracker(total: total) }
 
-            // Early-out if cancelled before we start
+            // Early cancel
             if Task.isCancelled {
                 await MainActor.run {
                     appendLog("ℹ️ Delete cancelled")
@@ -274,36 +292,74 @@ extension ContentView {
                 return
             }
 
-            for leaf in leafsSnapshot {
-                // Check for cancellation at the top of each iteration
-                if Task.isCancelled {
+            var removedCount = 0
+            var missingCount = 0
+            var failed: [(String, String)] = []
+            var submitted = 0
+            var completed = 0
+
+            appendLog("ℹ️ Starting deletion of thumbnail folders...")
+            
+            await withTaskGroup(of: DeletionResult.self) { group in
+                // Prime up to maxParallel
+                let initial = min(maxParallel, total)
+                while submitted < initial {
+                    let path = thumbPaths[submitted]
+                    group.addTask { @Sendable in
+                        let fm = FileManager.default
+                        if fm.fileExists(atPath: path) {
+                            do {
+                                try fm.removeItem(atPath: path)
+                                return .removed
+                            } catch {
+                                return .failed(path: path, error: error.localizedDescription)
+                            }
+                        } else {
+                            return .missing
+                        }
+                    }
+                    submitted += 1
+                }
+
+                // As each task finishes, submit one more until all are enqueued
+                while let result = await group.next() {
+                    if Task.isCancelled { break }
+
+                    // Tally on the main actor (no cross-thread mutation)
                     await MainActor.run {
-                        appendLog("ℹ️ Delete cancelled")
-                        isProcessing = false
-                        progressTracker.finish()
+                        switch result {
+                        case .removed: removedCount += 1
+                        case .missing: missingCount += 1
+                        case .failed(let path, let err): failed.append((path, err))
+                        }
+                        completed += 1
+                        progressTracker.increment()
+                        if completed % 50 == 0 {
+                            appendLog("… \(completed)/\(total) checked")
+                        }
                     }
-                    return
-                }
 
-                await MainActor.run { appendLog("🔍 Checking \(leaf.url.path)") }
-                let thumb = leaf.url.appendingPathComponent(thumbName, isDirectory: true)
-                let fileExists = FileManager.default.fileExists(atPath: thumb.path)
-
-                if fileExists {
-                    do {
-                        try FileManager.default.removeItem(at: thumb)
-                        await MainActor.run { appendLog("  🗑️ Removed \(thumbName) folder") }
-                    } catch {
-                        await MainActor.run { appendLog("  ❌  Failed to remove: \(error.localizedDescription)") }
+                    if submitted < total {
+                        let path = thumbPaths[submitted]
+                        group.addTask { @Sendable in
+                            let fm = FileManager.default
+                            if fm.fileExists(atPath: path) {
+                                do {
+                                    try fm.removeItem(atPath: path)
+                                    return .removed
+                                } catch {
+                                    return .failed(path: path, error: error.localizedDescription)
+                                }
+                            } else {
+                                return .missing
+                            }
+                        }
+                        submitted += 1
                     }
-                } else {
-                    await MainActor.run { appendLog("  ℹ️ No \(thumbName) folder found") }
                 }
-
-                await MainActor.run { progressTracker.increment() }
             }
 
-            // Final cancellation check before reporting success
+            // Final cancel check
             if Task.isCancelled {
                 await MainActor.run {
                     appendLog("ℹ️ Delete cancelled")
@@ -313,13 +369,101 @@ extension ContentView {
                 return
             }
 
+            // Summarize
             await MainActor.run {
+                if removedCount > 0 { appendLog("🗑️ Removed \(removedCount) “\(thumbName)” folder(s)") }
+                if missingCount > 0 { appendLog("ℹ️ No “\(thumbName)” folder found for \(missingCount) item(s)") }
+                if !failed.isEmpty {
+                    appendLog("❌ Failed to remove \(failed.count) folder(s):")
+                    for (i, entry) in failed.prefix(10).enumerated() {
+                        appendLog("  \(i+1). \(entry.0) — \(entry.1)")
+                    }
+                    if failed.count > 10 {
+                        appendLog("  …and \(failed.count - 10) more")
+                    }
+                }
+
                 appendLog("ℹ️ Clean operation finished.")
                 isProcessing = false
                 progressTracker.finish()
             }
         }
     }
+    
+    
+//    @MainActor
+//    func deleteThumbFolders() {
+//        guard !isProcessing else { return }
+//        isProcessing = true
+//        logLines.removeAll()
+//
+//        // Cancel any previously running delete task
+//        currentWork?.cancel()
+//
+//        // Take stable snapshots to avoid races if UI mutates while we work
+//        let leafsSnapshot = leafFolders
+//        let thumbName = thumbnailFolderName
+//
+//        currentWork = Task(priority: .userInitiated) {
+//            // Create progress on main since it likely touches UI
+//            let progressTracker = await MainActor.run { createProgressTracker(total: leafsSnapshot.count) }
+//
+//            // Early-out if cancelled before we start
+//            if Task.isCancelled {
+//                await MainActor.run {
+//                    appendLog("ℹ️ Delete cancelled")
+//                    isProcessing = false
+//                    progressTracker.finish()
+//                }
+//                return
+//            }
+//
+//            for leaf in leafsSnapshot {
+//                // Check for cancellation at the top of each iteration
+//                if Task.isCancelled {
+//                    await MainActor.run {
+//                        appendLog("ℹ️ Delete cancelled")
+//                        isProcessing = false
+//                        progressTracker.finish()
+//                    }
+//                    return
+//                }
+//
+//                await MainActor.run { appendLog("🔍 Checking \(leaf.url.path)") }
+//                let thumb = leaf.url.appendingPathComponent(thumbName, isDirectory: true)
+//                let fileExists = FileManager.default.fileExists(atPath: thumb.path)
+//
+//                if fileExists {
+//                    do {
+//                        try FileManager.default.removeItem(at: thumb)
+//                        await MainActor.run { appendLog("  🗑️ Removed \(thumbName) folder") }
+//                    } catch {
+//                        await MainActor.run { appendLog("  ❌  Failed to remove: \(error.localizedDescription)") }
+//                    }
+//                } else {
+//                    await MainActor.run { appendLog("  ℹ️ No \(thumbName) folder found") }
+//                }
+//
+//                await MainActor.run { progressTracker.increment() }
+//            }
+//
+//            // Final cancellation check before reporting success
+//            if Task.isCancelled {
+//                await MainActor.run {
+//                    appendLog("ℹ️ Delete cancelled")
+//                    isProcessing = false
+//                    progressTracker.finish()
+//                }
+//                return
+//            }
+//
+//            await MainActor.run {
+//                appendLog("ℹ️ Clean operation finished.")
+//                isProcessing = false
+//                progressTracker.finish()
+//            }
+//        }
+//    }
 
     @MainActor
     func clearAll() {
@@ -509,7 +653,9 @@ extension ContentView {
     @MainActor
     func appendLog(_ line: String) {
         // UI log with aggressive memory management
-        logLines.append(line)
+        if showLog {
+            logLines.append(line)
+        }
         
         // More aggressive memory management during heavy operations
         let maxLines = isProcessing ? 200 : 500
