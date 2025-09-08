@@ -1,8 +1,15 @@
-# 📷 Thumbnailer 
+<div align="center">
 
-A powerful **macOS app** for managing and processing photo & video
-collections with **automated thumbnail generation**, **contact sheet
-creation**, and smart media organization tools. ✨
+# Thumbnailer  
+
+<img src="Documentation/appIcon.png" width="100" alt="Thumbnailer Icon" />
+<br/><br/>
+
+A powerful **macOS app** for managing and processing photo & video collections with  
+**automated thumbnail generation**, **contact sheet creation**, and  
+smart media organization tools. ✨  
+
+</div>
 
 
 ## 🖥️ Screenshots 
@@ -95,9 +102,12 @@ open thumbnailer.xcodeproj
 ## 📝 Changelog
 
 ### 1.2
-- Removed App Sandbox from web release so CMD+O actually works right. 
+- 4x speed improvement in thumbnail & contact sheet generation. 
+- 1.5x speed improvement in JPG conversion.
+- 1.3x speed improvement in HEIC conversion. 
+- 625x speed improvement in thumbnail verification. 
+- Removed App Sandbox from web release so CMD+O actually works. 
 - Fixed logging so it writes to disk & shows data correctly after hiding. 
-- Added multi-threading for a ~4x increase in speed. 
 - Updated app icon. 
 
 ### 1.1

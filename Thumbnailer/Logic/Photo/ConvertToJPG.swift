@@ -27,12 +27,7 @@ struct ConvertToJPGResult {
 }
 
 struct ConvertToJPG {
-    /// Filenames to ignore (case-insensitive)
-    private static let ignoredNames = AppConstants.ignoredFileNames
-    
-    /// Extensions that can be renamed without re-encoding
-    private static let renameableExts = AppConstants.renameableJPEGExts
-
+   
     /// Dedicated queue for decoding/alpha-strip to avoid QoS inversions from ImageIO/CoreGraphics internals
     private static let decodeQueue = DispatchQueue(
         label: "com.thumbnailer.decode",

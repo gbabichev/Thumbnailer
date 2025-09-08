@@ -24,9 +24,6 @@ struct ConvertToHEICResult {
 }
 
 struct ConvertToHEIC {
-    /// Filenames to ignore (case-insensitive)
-    private static let ignoredNames = AppConstants.ignoredFileNames
-    
     /// Convert all suitable images under the given leaf folders to `.heic`.
     /// Uses HEICWriter and AppStorage quality setting.
     static func run(

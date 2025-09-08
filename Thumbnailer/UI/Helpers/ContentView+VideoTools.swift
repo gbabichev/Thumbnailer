@@ -176,7 +176,6 @@ extension ContentView {
                 // Process this video with FFmpeg
                 var options = FFmpegTrimOptions()
                 options.trimStartSeconds = Double(videoSecondsToTrim)
-                options.ffmpegPath = ffmpegInfo!.path
                 
                 let result = await trimVideoWithFFmpeg(video, ffmpegPath: ffmpegInfo!.path, options: options)
                 
@@ -388,7 +387,6 @@ extension ContentView {
                 // Process this video with FFmpeg (END TRIMMING)
                 var options = FFmpegTrimOptions()
                 options.trimEndSeconds = Double(videoSecondsToTrim)  // Changed from trimStartSeconds
-                options.ffmpegPath = ffmpegInfo!.path
                 
                 let result = await trimVideoWithFFmpeg(video, ffmpegPath: ffmpegInfo!.path, options: options)
                 
