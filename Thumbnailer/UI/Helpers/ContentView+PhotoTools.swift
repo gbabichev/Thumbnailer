@@ -364,53 +364,72 @@ extension ContentView {
             appendLog("No leaf folders to validate. Select a folder first.")
             return
         }
-        
+
         guard mode == .photos else {
             appendLog("Photo/thumb validation is only available in photo mode.")
             return
         }
-        
+
         isProcessing = true
         logLines.removeAll()
         appendLog("🔍 Validating photo vs thumbnail counts...")
-        
+
         let progressTracker = createProgressTracker(total: leaves.count)
-        
-        let results = await PhotoThumbValidator.validateLeafFolders(
-            leafs: leaves,
-            thumbFolderName: thumbnailFolderName,
-            appendLog: { @Sendable line in
-                Task { @MainActor in
-                    appendLog(line)
-                    // Update progress when we see validation messages
-                    if line.hasPrefix("🔍 Validating:") {
-                        progressTracker.increment()
+
+        // Run as a cancellable task like other tools
+        currentWork?.cancel()
+        currentWork = Task(priority: .userInitiated) {
+            do {
+                let results = await PhotoThumbValidator.validateLeafFolders(
+                    leafs: leaves,
+                    thumbFolderName: thumbnailFolderName,
+                    appendLog: { @Sendable line in
+                        Task { @MainActor in
+                            appendLog(line)
+                            if line.hasPrefix("🔍 Validating:") {
+                                progressTracker.increment()
+                            }
+                        }
+                    }
+                )
+
+                try Task.checkCancellation()
+
+                // Generate summary
+                let (_, mismatchCount, summaryText) = PhotoThumbValidator.generateSummary(from: results)
+
+                await MainActor.run {
+                    appendLog("")
+                    appendLog("📋  Summary:")
+                    appendLog(summaryText)
+
+                    // Show detailed mismatches if any
+                    if mismatchCount > 0 {
+                        appendLog("")
+                        appendLog("Detailed mismatches:")
+                        let mismatches = results.filter { !$0.isMatch }
+                        for mismatch in mismatches {
+                            let diff = mismatch.photoCount - mismatch.thumbCount
+                            let diffText = diff > 0 ? "+\(diff)" : "\(diff)"
+                            appendLog("⚠️ \(mismatch.summaryLine) (diff: \(diffText))")
+                        }
                     }
                 }
+
+            } catch is CancellationError {
+                await MainActor.run { appendLog("ℹ️ Validation cancelled.") }
+            } catch {
+                await MainActor.run { appendLog("❌ Validation failed: \(error.localizedDescription)") }
             }
-        )
-        
-        // Generate summary
-        let (_, mismatchCount, summaryText) = PhotoThumbValidator.generateSummary(from: results)
-        
-        appendLog("")
-        appendLog("📋  Summary:")
-        appendLog(summaryText)
-        
-        // Show detailed mismatches if any
-        if mismatchCount > 0 {
-            appendLog("")
-            appendLog("Detailed mismatches:")
-            let mismatches = results.filter { !$0.isMatch }
-            for mismatch in mismatches {
-                let diff = mismatch.photoCount - mismatch.thumbCount
-                let diffText = diff > 0 ? "+\(diff)" : "\(diff)"
-                appendLog("⚠️ \(mismatch.summaryLine) (diff: \(diffText))")
+
+            await MainActor.run {
+                isProcessing = false
+                progressTracker.finish()
             }
         }
-        
-        isProcessing = false
-        progressTracker.finish()
+
+        // Early return; the rest of the function is handled inside the task
+        return
     }
     
     // ---

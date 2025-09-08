@@ -75,6 +75,7 @@ enum PhotoThumbValidator {
             // Submit a single leaf for validation
             func submit(index: Int, leaf: URL) {
                 group.addTask { @Sendable in
+                    if Task.isCancelled { return }
                     // Log start
                     await MainActor.run { appendLog("🔍 Validating: \(leaf.lastPathComponent)") }
 
@@ -88,6 +89,7 @@ enum PhotoThumbValidator {
                         in: leaf,
                         thumbFolderName: thumbFolderName
                     )
+                    if Task.isCancelled { return }
 
                     let result = PhotoThumbValidationResult(
                         leafURL: leaf,
@@ -106,11 +108,12 @@ enum PhotoThumbValidator {
 
             // Prime the group
             for _ in 0..<maxConcurrent {
-                if let (i, leaf) = it.next() { submit(index: i, leaf: leaf) } else { break }
+                if Task.isCancelled { break } else if let (i, leaf) = it.next() { submit(index: i, leaf: leaf) } else { break }
             }
             // Drain & refill
             while await group.next() != nil {
-                if let (i, leaf) = it.next() { submit(index: i, leaf: leaf) }
+                if Task.isCancelled { break }
+                if Task.isCancelled { break } else if let (i, leaf) = it.next() { submit(index: i, leaf: leaf) }
             }
         }
 
