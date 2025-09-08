@@ -94,6 +94,12 @@ open thumbnailer.xcodeproj
 
 ## 📝 Changelog
 
+### 1.2
+- Removed App Sandbox from web release so CMD+O actually works right. 
+- Fixed logging so it writes to disk & shows data correctly after hiding. 
+- Added multi-threading for a ~4x increase in speed. 
+- Updated app icon. 
+
 ### 1.1
 - Fixed "cancel task" not working on deletion of thumbnail folders. 
 - Added "Hide Log" to hide the log UI in case of thousands of files being processed - helps improve performance. 

@@ -85,7 +85,7 @@ extension ContentView {
                         thumbFolderName: folder,
                         quality: quality,
                         format: outputFormat,
-                        progressCallback: { imageProcessed in
+                        progressCallback: { @Sendable imageProcessed in
                             Task { @MainActor in
                                 processedImages += 1
                                 progressTracker.updateTo(processedImages)
@@ -185,66 +185,67 @@ extension ContentView {
                 appendLog("🖼 Creating contact sheets for \(totalImages) images across \(targets.count) folders")
             }
 
-            for (index, leaf) in targets.enumerated() {
-                if Task.isCancelled { break }
-                
-                await MainActor.run {
-                    appendLog("📁 Sheet \(index + 1)/\(targets.count): \(leaf.lastPathComponent)")
-                }
+            // Bounded concurrency across FOLDERS (in addition to per-image concurrency inside each folder)
+            let cpuCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
+            let maxFolderConcurrent = max(1, cpuCount / 3) // scale with cores, leave headroom for per-image tasks & memory
 
-                let tempName = ".zz_tmp_sheet_\(UUID().uuidString.prefix(8))"
-                let dir = leaf.appendingPathComponent(tempName, isDirectory: true)
-
+            // Helper to process a single folder (creates temp thumbs, composes sheet, cleans up)
+            @Sendable func processFolder(index: Int, leaf: URL) async {
                 do {
+                    if Task.isCancelled { return }
+
+                    await MainActor.run {
+                        appendLog("📁 Sheet \(index + 1)/\(targets.count): \(leaf.lastPathComponent)")
+                    }
+
+                    let tempName = ".zz_tmp_sheet_\(UUID().uuidString.prefix(8))"
+                    let dir = leaf.appendingPathComponent(tempName, isDirectory: true)
+
                     // Step 1: Create temp directory
                     try await MainActor.run {
                         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                     }
-                    
-                    // Step 2: Process thumbnails with progress (always use JPEG for temp thumbnails)
+
+                    // Step 2: Process thumbnails with progress (always JPEG for temp thumbs)
                     _ = try await processLeafFolderWithProgress(
                         leaf: leaf,
                         height: Int(cellSide),
                         thumbFolderName: tempName,
                         quality: q,
-                        format: .jpeg, // Always use JPEG for temp contact sheet thumbnails
-                        progressCallback: { _ in
+                        format: .jpeg,
+                        progressCallback: { @Sendable _ in
                             Task { @MainActor in
                                 processedImages += 1
                                 progressTracker.updateTo(processedImages)
-                                
                                 if processedImages % 10 == 0 {
                                     appendLog("    📷 Processed \(processedImages)/\(totalImages) images")
                                 }
                             }
                         }
                     )
-                    
-                    // Step 3: Compose and write sheet (off main thread for heavy computation)
+
+                    // Step 3: Compose and write sheet (off main thread)
                     await MainActor.run { appendLog("  🎨 Composing contact sheet...") }
-                    
-                    // Capture the format selection on the main actor before going to detached task
-                    let selectedFormat = ThumbnailFormat(rawValue: thumbnailFormatRaw) ?? .jpeg
-                    let sheetFormat: SheetOutputFormat = selectedFormat == .heic ? .heic : .jpeg
-                    
-                    let outputPath = try await Task.detached(priority: .userInitiated) {
+
+                    // Capture the format selection on the main actor before heavy work
+                    let selectedFormat = await MainActor.run { ThumbnailFormat(rawValue: thumbnailFormatRaw) ?? .jpeg }
+                    let sheetFormat: SheetOutputFormat = (selectedFormat == .heic) ? .heic : .jpeg
+
+                    let outputPath = try await Task.detached(priority: .userInitiated) { () -> URL in
                         let thumbs = PhotoSheetComposer.loadDownsampledCGImages(in: dir, fitting: cellSize, scale: 1.0)
-                        
                         let baseURL = leaf.deletingLastPathComponent()
                             .appendingPathComponent(leaf.lastPathComponent)
                             .appendingPathExtension("jpg") // Will be adjusted by composeAndWriteSheet
-                        
                         let finalURL = try await PhotoSheetComposer.composeAndWriteSheet(
                             thumbnails: thumbs,
                             columns: columns,
                             cellSize: cellSize,
-                            background: CGColor(gray: 0, alpha: 1),
+                            background: NSColor.black.cgColor,
                             contentMode: fitMode,
                             to: baseURL,
                             quality: q,
                             format: sheetFormat
                         )
-                        
                         return finalURL
                     }.value
 
@@ -255,21 +256,44 @@ extension ContentView {
 
                     await MainActor.run {
                         appendLog("  ✅ Wrote sheet: \(outputPath.lastPathComponent)")
-                        progressTracker.increment() // Extra increment for composition step
+                        progressTracker.increment() // composition step
                         totalSheets += 1
                         successfulSheets += 1
                     }
-                    
+
+                } catch is CancellationError {
+                    // Best-effort cleanup
+                    await MainActor.run {
+                        appendLog("  ⚠️ Sheet cancelled: \(leaf.lastPathComponent)")
+                        totalSheets += 1
+                        progressTracker.increment()
+                    }
+                    if FileManager.default.fileExists(atPath: leaf.path) { /* no-op */ }
                 } catch {
                     // Clean up temp directory on error
-                    if FileManager.default.fileExists(atPath: dir.path) {
-                        try? FileManager.default.removeItem(at: dir)
-                    }
-                    
+                    let tempName = ".zz_tmp_sheet_" // prefix used above
+                    let dir = leaf.appendingPathComponent(tempName, isDirectory: true)
+                    if FileManager.default.fileExists(atPath: dir.path) { try? FileManager.default.removeItem(at: dir) }
+
                     await MainActor.run {
                         appendLog("  ❌ \(error.localizedDescription)")
-                        progressTracker.increment() // Still increment to maintain progress
+                        progressTracker.increment()
                         totalSheets += 1
+                    }
+                }
+            }
+
+            var it = Array(targets.enumerated()).makeIterator()
+            await withTaskGroup(of: Void.self) { group in
+                // Prime the group
+                for _ in 0..<maxFolderConcurrent {
+                    guard let (i, leaf) = it.next() else { break }
+                    group.addTask { @Sendable in await processFolder(index: i, leaf: leaf) }
+                }
+                // Drain & refill
+                while let _ = await group.next() {
+                    if let (i, leaf) = it.next() {
+                        group.addTask { @Sendable in await processFolder(index: i, leaf: leaf) }
                     }
                 }
             }
@@ -321,7 +345,7 @@ extension ContentView {
         thumbFolderName: String,
         quality: Double,
         format: ThumbnailOutputFormat,
-        progressCallback: @escaping (Int) -> Void
+        progressCallback: @escaping @Sendable (Int) -> Void
     ) async throws -> Int {
         let fm = FileManager.default
         let finalThumbFolder = leaf.appendingPathComponent(thumbFolderName, isDirectory: true)
@@ -369,77 +393,71 @@ extension ContentView {
             }
         }
 
-        var written = 0
-        let batchSize = 5 // Smaller batch for atomic moves
-        var localThumbnails: [(local: URL, final: URL)] = []
+        // Process images to local temp folder first — BOUNDED CONCURRENCY
+        // Determine concurrency based on active CPU count (avoid hardcoding)
+        let cpuCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        let maxConcurrent = max(1, cpuCount - 1) // leave a little headroom for UI/IO
 
-        // Process images to local temp folder first
-        for (index, imageURL) in imageFiles.enumerated() {
-            try Task.checkCancellation()
-            
+        // Helper to process a single image and return pair of (local, final) for later atomic move
+        @Sendable func processOne(imageURL: URL, index: Int) async -> (local: URL, final: URL)? {
             do {
                 // Generate thumbnail filename
                 let fileExtension = format.fileExtension
                 let thumbnailName = imageURL.deletingPathExtension().lastPathComponent + "." + fileExtension
-                
+
                 let localThumbURL = localTempFolder.appendingPathComponent(thumbnailName)
                 let finalThumbURL = finalThumbFolder.appendingPathComponent(thumbnailName)
-                
+
                 // Skip if thumbnail already exists in final location
-                if await MainActor.run(body: { fm.fileExists(atPath: finalThumbURL.path) }) {
+                let exists = await MainActor.run { FileManager.default.fileExists(atPath: finalThumbURL.path) }
+                if exists {
                     progressCallback(index + 1)
-                    continue
+                    return nil
                 }
-                
-                // Use ImageIO downsampling (fast!) then simple CGContext scaling to avoid priority inversions
+
+                // Use ImageIO downsampling then CGContext scaling
                 let thumbnailCGImage = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CGImage, Error>) in
                     DispatchQueue.global(qos: .utility).async {
                         guard let imageSource = CGImageSourceCreateWithURL(imageURL as CFURL, nil) else {
                             continuation.resume(throwing: NSError(domain: "ImageProcessing", code: 1))
                             return
                         }
-                        
-                        // Get image properties for efficient downsampling
+
                         let props = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as NSDictionary?
                         let metaW = (props?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
                         let metaH = (props?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
-                        
-                        // Handle EXIF orientation
+
                         let orientationValue = (props?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
                         let isRotated90 = (5...8).contains(orientationValue)
                         let (effW, effH) = isRotated90 ? (metaH, metaW) : (metaW, metaH)
-                        
+
                         guard effW > 0 && effH > 0 else {
                             continuation.resume(throwing: NSError(domain: "ImageProcessing", code: 2))
                             return
                         }
-                        
-                        // Calculate target dimensions
+
                         let scale = CGFloat(height) / CGFloat(effH)
                         let targetW = max(1, Int(round(CGFloat(effW) * scale)))
                         let targetH = max(1, height)
                         let firstPassMax = max(targetW, targetH)
-                        
-                        // Use ImageIO downsampling (much faster than loading full image)
+
                         let thumbOptions: [CFString: Any] = [
                             kCGImageSourceCreateThumbnailFromImageAlways: true,
                             kCGImageSourceThumbnailMaxPixelSize: firstPassMax,
                             kCGImageSourceCreateThumbnailWithTransform: true,
                             kCGImageSourceShouldCache: false
                         ]
-                        
+
                         guard let downsampled = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOptions as CFDictionary) else {
                             continuation.resume(throwing: NSError(domain: "ImageProcessing", code: 3))
                             return
                         }
-                        
-                        // If already exact size, use as-is
+
                         if downsampled.height == targetH {
                             continuation.resume(returning: downsampled)
                             return
                         }
-                        
-                        // Final exact-size scaling with CGContext (avoids CoreImage priority inversions)
+
                         guard let ctx = CGContext(
                             data: nil,
                             width: targetW,
@@ -452,19 +470,19 @@ extension ContentView {
                             continuation.resume(throwing: NSError(domain: "ImageProcessing", code: 4))
                             return
                         }
-                        
+
                         ctx.interpolationQuality = .medium
                         ctx.draw(downsampled, in: CGRect(x: 0, y: 0, width: targetW, height: targetH))
-                        
+
                         guard let finalImage = ctx.makeImage() else {
                             continuation.resume(throwing: NSError(domain: "ImageProcessing", code: 5))
                             return
                         }
-                        
+
                         continuation.resume(returning: finalImage)
                     }
                 }
-                
+
                 // Write to LOCAL temp folder (fast!)
                 switch format {
                 case .jpeg:
@@ -483,47 +501,68 @@ extension ContentView {
                         overwrite: true
                     )
                 }
-                
-                // Queue for atomic move
-                localThumbnails.append((local: localThumbURL, final: finalThumbURL))
+
+                // Report progress for this image
                 progressCallback(index + 1)
-                
-                // Batch atomic moves to SMB
-                if localThumbnails.count >= batchSize || index == imageFiles.count - 1 {
-                    try await performAtomicMoves(localThumbnails, fileManager: fm)
-                    written += localThumbnails.count
-                    localThumbnails.removeAll()
-                }
-                
+                return (local: localThumbURL, final: finalThumbURL)
+
             } catch {
+                // Report progress even on failure to keep UI consistent
                 progressCallback(index + 1)
-                continue
+                return nil
             }
-            
-            // Yield control periodically
-            if (index + 1) % batchSize == 0 {
-                await Task.yield()
+        }
+
+        var written = 0
+        let batchSize = 5 // Smaller batch for atomic moves
+        var moveBuffer: [(local: URL, final: URL)] = []
+
+        // Seed the task group with up to maxConcurrent items, then keep feeding as tasks finish
+        var enumerated = Array(imageFiles.enumerated()).makeIterator()
+
+        try await withThrowingTaskGroup(of: (local: URL, final: URL)?.self) { group in
+            // initial window
+            for _ in 0..<maxConcurrent {
+                guard let (index, url) = enumerated.next() else { break }
+                group.addTask { await processOne(imageURL: url, index: index) }
+            }
+
+            // drain & refill
+            while let result = try await group.next() {
+                if let pair = result { moveBuffer.append(pair) }
+
+                // Batch atomic moves to SMB when buffer fills
+                if moveBuffer.count >= batchSize {
+                    try await performAtomicMoves(moveBuffer)
+                    written += moveBuffer.count
+                    moveBuffer.removeAll()
+                }
+
+                // add another task if items remain
+                if let (index, url) = enumerated.next() {
+                    group.addTask { await processOne(imageURL: url, index: index) }
+                }
             }
         }
         
         // Move any remaining thumbnails
-        if !localThumbnails.isEmpty {
-            try await performAtomicMoves(localThumbnails, fileManager: fm)
-            written += localThumbnails.count
+        if !moveBuffer.isEmpty {
+            try await performAtomicMoves(moveBuffer)
+            written += moveBuffer.count
+            moveBuffer.removeAll()
         }
-        
         return written
     }
     
     /// Perform atomic moves from local temp to final SMB location
-    private func performAtomicMoves(_ thumbnails: [(local: URL, final: URL)], fileManager: FileManager) async throws {
+    private func performAtomicMoves(_ thumbnails: [(local: URL, final: URL)]) async throws {
         try await MainActor.run {
             for (localURL, finalURL) in thumbnails {
                 // Atomic move operation - single SMB transaction per file
-                if fileManager.fileExists(atPath: finalURL.path) {
-                    try? fileManager.removeItem(at: finalURL)
+                if FileManager.default.fileExists(atPath: finalURL.path) {
+                    try? FileManager.default.removeItem(at: finalURL)
                 }
-                try fileManager.moveItem(at: localURL, to: finalURL)
+                try FileManager.default.moveItem(at: localURL, to: finalURL)
             }
         }
     }
@@ -561,3 +600,4 @@ extension ContentView {
  
 
 }
+ 
