@@ -379,11 +379,13 @@ extension ContentView {
         let results = await PhotoThumbValidator.validateLeafFolders(
             leafs: leaves,
             thumbFolderName: thumbnailFolderName,
-            appendLog: { line in
-                appendLog(line)
-                // Update progress when we see validation messages
-                if line.hasPrefix("🔍 Validating:") {
-                    progressTracker.increment()
+            appendLog: { @Sendable line in
+                Task { @MainActor in
+                    appendLog(line)
+                    // Update progress when we see validation messages
+                    if line.hasPrefix("🔍 Validating:") {
+                        progressTracker.increment()
+                    }
                 }
             }
         )
