@@ -654,6 +654,7 @@ extension ContentView {
 
             Button {
                 showLog.toggle()
+                appendLog("Log Shown")
             } label: {
                 Label(showLog ? "Hide Log" : "Show Log",
                       systemImage: showLog ? "eye" : "eye.slash")

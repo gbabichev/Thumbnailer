@@ -1,0 +1,141 @@
+{
+  "fill" : {
+    "solid" : "extended-gray:1.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "teal.png",
+          "name" : "teal",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              -221.71202460995613,
+              126.3000790966876
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "image-name" : "yellow_n.png",
+          "name" : "yellow_n",
+          "opacity" : 0.7,
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              220.96501988854166,
+              127.93223324827136
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "image-name" : "purple_n.png",
+          "name" : "purple_n",
+          "opacity" : 0.7,
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              -1.7,
+              -256.90822651824516
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "image-name" : "orange_n.png",
+          "name" : "orange_n",
+          "opacity" : 0.7,
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              0.7316553093306193,
+              255.9
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "image-name" : "green_n.png",
+          "name" : "green_n",
+          "opacity" : 0.7,
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              220.40220811213348,
+              -125.138640249009
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "image-name" : "blue_n.png",
+          "name" : "blue_n",
+          "opacity" : 0.7,
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              -223,
+              -122
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 1
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "blur-material" : null,
+      "hidden" : false,
+      "layers" : [
+        {
+          "image-name" : "play.png",
+          "name" : "play",
+          "position" : {
+            "scale" : 0.15,
+            "translation-in-points" : [
+              1,
+              4
+            ]
+          }
+        },
+        {
+          "image-name" : "1_n copy.png",
+          "name" : "1_n copy",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              -1,
+              -5
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 1
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

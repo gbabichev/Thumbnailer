@@ -652,23 +652,22 @@ extension ContentView {
     
     @MainActor
     func appendLog(_ line: String) {
-        // UI log with aggressive memory management
-        if showLog {
-            logLines.append(line)
-        }
-        
-        // More aggressive memory management during heavy operations
+        // Always write to disk, regardless of UI state
+        AppLogWriter.appendToFile(line)
+
+        // Update UI only when the log is visible
+        guard showLog else { return }
+
+        // Append to in-memory UI log
+        logLines.append(line)
+
+        // Aggressive memory management while updating UI
         let maxLines = isProcessing ? 200 : 500
         if logLines.count > maxLines {
             let toRemove = logLines.count - (maxLines - 50) // Remove more at once
             logLines.removeFirst(toRemove)
         }
-        
-        // Buffered disk log (batched writes) - but throttle during heavy processing
-        if !isProcessing || logLines.count % 5 == 0 {
-            AppLogWriter.appendToFile(line)
-        }
-        
+
         // Emergency safety: if we somehow get too many lines, trim aggressively
         if logLines.count > maxLines * 2 {
             logLines = Array(logLines.suffix(100)) // Keep only last 100 lines
