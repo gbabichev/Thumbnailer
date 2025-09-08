@@ -5,7 +5,7 @@
 <picture>
   <source srcset="Documentation/icon-dark.png" media="(prefers-color-scheme: dark)">
   <source srcset="Documentation/icon-light.png" media="(prefers-color-scheme: light)">
-  <img src="icon-light.png" alt="App Icon" width="100">
+  <img src="Documentation/icon-light.png" alt="App Icon" width="100">
 </picture>
 <br/><br/>
 
