@@ -25,9 +25,6 @@ struct FFmpegTrimOptions: Sendable {
     /// Suffix for new files when not replacing
     var outputSuffix: String = "_trimmed"
     
-    /// Path to ffmpeg binary (auto-detected if nil)
-    var ffmpegPath: String? = nil
-    
     init() {}
 }
 
