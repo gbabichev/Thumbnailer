@@ -56,7 +56,6 @@ struct ContentView: View {
     // Settings popover hover elements
     // in ContentView
 
-
     
     @State var hoveredLeafIdx: Int? = nil
     
@@ -261,6 +260,12 @@ struct ContentView: View {
             }
             else {
                 Text("This will move \(pendingContactlessVictims.count) \(mediaType) folder(s) without a matching contact sheet to the Trash.")
+            }
+        }
+        .onChange(of: showLog) { oldValue, newValue in
+            if newValue && !oldValue {
+                // Log just became visible - refresh from disk
+                refreshUILogFromDisk()
             }
         }
     }

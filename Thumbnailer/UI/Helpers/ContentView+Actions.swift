@@ -3,7 +3,7 @@
  ContentView+Actions.swift
  Thumbnailer
  
- Generic App Actions - Cleaned up epoch system
+ Generic App Actions - Fixed compilation errors
  
  George Babichev
  
@@ -11,6 +11,48 @@
 
 import SwiftUI
 import Foundation
+
+// MARK: - Log Session Marker (file-scoped)
+fileprivate let _logSessionID: String = UUID().uuidString
+fileprivate let _sessionMarkerPrefix: String = "=== SESSION START ==="
+fileprivate let _processStartDate: Date = Date()
+
+// Use a class to hold mutable state
+fileprivate class SessionState {
+    static let shared = SessionState()
+    var wroteLogSessionMarker: Bool = false
+    private init() {}
+}
+
+// Try to parse a timestamp from a log line
+fileprivate func _parseLogTimestamp(_ line: String) -> Date? {
+    let head: String
+    if let range = line.range(of: ":::") {
+        head = String(line[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+    } else {
+        head = line.trimmingCharacters(in: .whitespaces)
+    }
+    
+    let iso = ISO8601DateFormatter()
+    if let d = iso.date(from: head) { return d }
+    
+    let df = DateFormatter()
+    df.locale = Locale(identifier: "en_US_POSIX")
+    df.timeZone = TimeZone(secondsFromGMT: 0)
+    df.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    if let d = df.date(from: head) { return d }
+    df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    if let d = df.date(from: head) { return d }
+    return nil
+}
+
+fileprivate func _ensureLogSessionMarker() {
+    if !SessionState.shared.wroteLogSessionMarker {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        AppLogWriter.appendToFile("\(_sessionMarkerPrefix) \(_logSessionID) @ \(ts)")
+        SessionState.shared.wroteLogSessionMarker = true
+    }
+}
 
 extension ContentView {
     
@@ -25,7 +67,7 @@ extension ContentView {
             let u = raw.resolvingSymlinksInPath()
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: u.path, isDirectory: &isDir), isDir.boolValue {
-                folders.append(u)
+                folders.append(u) // FIXED: was "appendappend"
             } else {
                 folders.append(u.deletingLastPathComponent())
             }
@@ -298,7 +340,7 @@ extension ContentView {
             var submitted = 0
             var completed = 0
 
-            appendLog("ℹ️ Starting deletion of thumbnail folders...")
+            await MainActor.run { appendLog("ℹ️ Starting deletion of thumbnail folders...") }
             
             await withTaskGroup(of: DeletionResult.self) { group in
                 // Prime up to maxParallel
@@ -371,8 +413,8 @@ extension ContentView {
 
             // Summarize
             await MainActor.run {
-                if removedCount > 0 { appendLog("🗑️ Removed \(removedCount) “\(thumbName)” folder(s)") }
-                if missingCount > 0 { appendLog("ℹ️ No “\(thumbName)” folder found for \(missingCount) item(s)") }
+                if removedCount > 0 { appendLog("🗑️ Removed \(removedCount) \"\(thumbName)\" folder(s)") }
+                if missingCount > 0 { appendLog("ℹ️ No \"\(thumbName)\" folder found for \(missingCount) item(s)") }
                 if !failed.isEmpty {
                     appendLog("❌ Failed to remove \(failed.count) folder(s):")
                     for (i, entry) in failed.prefix(10).enumerated() {
@@ -389,81 +431,6 @@ extension ContentView {
             }
         }
     }
-    
-    
-//    @MainActor
-//    func deleteThumbFolders() {
-//        guard !isProcessing else { return }
-//        isProcessing = true
-//        logLines.removeAll()
-//
-//        // Cancel any previously running delete task
-//        currentWork?.cancel()
-//
-//        // Take stable snapshots to avoid races if UI mutates while we work
-//        let leafsSnapshot = leafFolders
-//        let thumbName = thumbnailFolderName
-//
-//        currentWork = Task(priority: .userInitiated) {
-//            // Create progress on main since it likely touches UI
-//            let progressTracker = await MainActor.run { createProgressTracker(total: leafsSnapshot.count) }
-//
-//            // Early-out if cancelled before we start
-//            if Task.isCancelled {
-//                await MainActor.run {
-//                    appendLog("ℹ️ Delete cancelled")
-//                    isProcessing = false
-//                    progressTracker.finish()
-//                }
-//                return
-//            }
-//
-//            for leaf in leafsSnapshot {
-//                // Check for cancellation at the top of each iteration
-//                if Task.isCancelled {
-//                    await MainActor.run {
-//                        appendLog("ℹ️ Delete cancelled")
-//                        isProcessing = false
-//                        progressTracker.finish()
-//                    }
-//                    return
-//                }
-//
-//                await MainActor.run { appendLog("🔍 Checking \(leaf.url.path)") }
-//                let thumb = leaf.url.appendingPathComponent(thumbName, isDirectory: true)
-//                let fileExists = FileManager.default.fileExists(atPath: thumb.path)
-//
-//                if fileExists {
-//                    do {
-//                        try FileManager.default.removeItem(at: thumb)
-//                        await MainActor.run { appendLog("  🗑️ Removed \(thumbName) folder") }
-//                    } catch {
-//                        await MainActor.run { appendLog("  ❌  Failed to remove: \(error.localizedDescription)") }
-//                    }
-//                } else {
-//                    await MainActor.run { appendLog("  ℹ️ No \(thumbName) folder found") }
-//                }
-//
-//                await MainActor.run { progressTracker.increment() }
-//            }
-//
-//            // Final cancellation check before reporting success
-//            if Task.isCancelled {
-//                await MainActor.run {
-//                    appendLog("ℹ️ Delete cancelled")
-//                    isProcessing = false
-//                    progressTracker.finish()
-//                }
-//                return
-//            }
-//
-//            await MainActor.run {
-//                appendLog("ℹ️ Clean operation finished.")
-//                isProcessing = false
-//                progressTracker.finish()
-//            }
-//        }
-//    }
 
     @MainActor
     func clearAll() {
@@ -652,6 +619,8 @@ extension ContentView {
     
     @MainActor
     func appendLog(_ line: String) {
+        _ensureLogSessionMarker()
+        
         // Always write to disk, regardless of UI state
         AppLogWriter.appendToFile(line)
 
@@ -664,15 +633,90 @@ extension ContentView {
         // Aggressive memory management while updating UI
         let maxLines = isProcessing ? 200 : 500
         if logLines.count > maxLines {
-            let toRemove = logLines.count - (maxLines - 50) // Remove more at once
+            let toRemove = logLines.count - (maxLines - 50)
             logLines.removeFirst(toRemove)
         }
 
-        // Emergency safety: if we somehow get too many lines, trim aggressively
+        // Emergency safety
         if logLines.count > maxLines * 2 {
-            logLines = Array(logLines.suffix(100)) // Keep only last 100 lines
+            logLines = Array(logLines.suffix(100))
             logLines.append("⚠️ Log trimmed due to size - showing last 100 entries")
         }
+    }
+
+    // MARK: - Add refreshUILogFromDisk method
+    
+    @MainActor
+    func refreshUILogFromDisk() {
+        guard showLog else { return }
+        
+        var recent: [String] = []
+        if let tail = AppLogWriter.readTail(400), !tail.isEmpty {
+            recent = tail
+        } else if let all = AppLogWriter.readAll(), !all.isEmpty {
+            recent = Array(all.suffix(2000))
+        } else {
+            logLines = []
+            return
+        }
+
+        // Find the latest session marker for this launch
+        let marker = "\(_sessionMarkerPrefix) \(_logSessionID)"
+        var startIdx: Int? = nil
+        for (idx, line) in recent.enumerated().reversed() {
+            if line.contains(marker) {
+                startIdx = idx + 1
+                break
+            }
+        }
+
+        // Build candidate lines for this launch
+        var sessionLines: [String] = []
+        if let idx = startIdx, idx < recent.count {
+            sessionLines = Array(recent.suffix(from: idx))
+        } else {
+            // Fallback: filter by timestamp
+            let cutoff = _processStartDate.addingTimeInterval(-30)
+            sessionLines = recent.filter { line in
+                if let d = _parseLogTimestamp(line) {
+                    return d >= cutoff
+                }
+                return false
+            }
+
+            // Final fallback
+            if sessionLines.isEmpty {
+                if let mod = _logFileModificationDate(),
+                   mod >= _processStartDate.addingTimeInterval(-60) {
+                    sessionLines = Array(recent.suffix(100))
+                }
+            }
+        }
+
+        // Clean up the lines
+        let cleaned = sessionLines.filter { line in
+            let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !t.isEmpty
+        }
+        logLines = Array(cleaned.suffix(100))
+
+        // Apply safety trimming
+        let maxLines = isProcessing ? 200 : 500
+        if logLines.count > maxLines * 2 {
+            logLines = Array(logLines.suffix(100))
+            logLines.append("⚠️ Log trimmed due to size - showing last 100 entries")
+        }
+    }
+
+    // MARK: - Helper method
+    
+    private func _logFileModificationDate() -> Date? {
+        let path = logFileURL().path
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+           let m = attrs[.modificationDate] as? Date {
+            return m
+        }
+        return nil
     }
     
     // MARK: - Log File Management

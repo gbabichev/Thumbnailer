@@ -22,13 +22,21 @@ struct AboutView: View {
         VStack(spacing: 20) {
             // App logo or personal branding image.
             // Requires "gbabichev" asset in app resources.
-            Image("gbabichev")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 120, height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .shadow(radius: 10)
-
+            HStack(spacing: 10) {
+                Image("gbabichev")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 120, height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .shadow(radius: 10)
+                
+                // This gets the actual app icon that appears in Dock/Finder
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 124, height: 124)
+            }
+            
             // App name displayed prominently
             Text(
                 Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
@@ -36,6 +44,9 @@ struct AboutView: View {
                 ?? "Thumbnailer")
                 .font(.title)
                 .bold()
+            
+            Text("Thumbnail & Contact Sheet generator with lots of pro tools.")
+                .font(.footnote)
 
             // App version fetched dynamically from Info.plist; fallback to "1.0"
             Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (Build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")

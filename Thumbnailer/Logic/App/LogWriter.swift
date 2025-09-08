@@ -115,4 +115,61 @@ actor AppLogWriter {
             NSLog("AppLog writeLinesToDisk failed: %@", String(describing: error))
         }
     }
+    
+    // Add these methods to your AppLogWriter actor in LogWriter.swift
+
+    // MARK: - Read Helpers
+    private static func logFileURL() -> URL {
+        let info = Bundle.main.infoDictionary
+        let appName =
+            (info?["CFBundleDisplayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? (info?["CFBundleName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ProcessInfo.processInfo.processName
+        let safeAppName = appName.replacingOccurrences(of: "/", with: "-")
+        let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        return base
+            .appendingPathComponent("Logs", isDirectory: true)
+            .appendingPathComponent(safeAppName, isDirectory: true)
+            .appendingPathComponent("latest.txt")
+    }
+
+    /// Read the entire log file and return lines (without trailing empty line)
+    nonisolated static func readAll() -> [String]? {
+        let url = logFileURL()
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return [] }
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+        var lines = text.components(separatedBy: "\n")
+        if let last = lines.last, last.isEmpty { lines.removeLast() }
+        return lines
+    }
+
+    /// Read the last N lines of the log file efficiently (fallback to full read)
+    nonisolated static func readTail(_ count: Int) -> [String]? {
+        let url = logFileURL()
+        guard let fh = try? FileHandle(forReadingFrom: url) else {
+            return []
+        }
+        defer { try? fh.close() }
+
+        // Try to read a chunk from the end to avoid loading the whole file
+        let chunkSize = 512 * 1024 // 512 KB
+        let fileSize = (try? fh.seekToEnd()) ?? 0
+        let start = fileSize > chunkSize ? fileSize - UInt64(chunkSize) : 0
+        if start > 0 {
+            try? fh.seek(toOffset: start)
+        } else {
+            try? fh.seek(toOffset: 0)
+        }
+
+        let data = try? fh.readToEnd()
+        guard let data, !data.isEmpty else { return [] }
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+        var lines = text.components(separatedBy: "\n")
+        if let last = lines.last, last.isEmpty { lines.removeLast() }
+        if lines.count > count {
+            lines = Array(lines.suffix(count))
+        }
+        return lines
+    }
+    
 }
