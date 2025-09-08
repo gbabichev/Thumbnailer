@@ -37,7 +37,7 @@ struct ConvertToJPG {
     private static let decodeQueue = DispatchQueue(
         label: "com.thumbnailer.decode",
         qos: .utility,
-        target: nil
+        attributes: .concurrent
     )
 
     /// Convert all suitable images under the given leaf folders to `.jpg`.
@@ -46,10 +46,14 @@ struct ConvertToJPG {
         leaves: [URL],
         ignoreFolderName: String,
         quality: Double,
-        log: @escaping (String) -> Void
+        log: @escaping @Sendable (String) -> Void
     ) async -> ConvertToJPGResult {
         var scanned = 0, converted = 0, renamed = 0, skipped = 0
         let fileManager = FileManager.default
+
+        // Snapshot main-actor isolated constants for use in concurrent contexts
+        let ignored: Set<String> = await MainActor.run { Set(AppConstants.ignoredFileNames.map { $0.lowercased() }) }
+        let renameable: Set<String> = await MainActor.run { Set(AppConstants.renameableJPEGExts.map { $0.lowercased() }) }
 
         for leaf in leaves {
             guard (try? leaf.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
@@ -66,7 +70,7 @@ struct ConvertToJPG {
             let files = children
                 .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
                 .filter { $0.lastPathComponent != ignoreFolderName }
-                .filter { !ignoredNames.contains($0.lastPathComponent.lowercased()) }
+                .filter { !ignored.contains($0.lastPathComponent.lowercased()) }
                 .filter { isImageFile($0) }
                 .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
 
@@ -76,58 +80,73 @@ struct ConvertToJPG {
                 log("📂 Processing: \(leaf.lastPathComponent)")
             }
 
-            for file in files {
-                let ext = file.pathExtension.lowercased()
-                let base = file.deletingPathExtension().lastPathComponent
-                let destination = leaf.appendingPathComponent("\(base).jpg")
+            // Bounded concurrency across FILES within this leaf
+            let cpu = max(1, ProcessInfo.processInfo.activeProcessorCount)
+            let maxConcurrentFiles = max(2, cpu / 2) // leave headroom for I/O
 
-                // Skip if already .jpg
-                if ext == "jpg" {
-                    skipped += 1
-                    continue
+            var it = files.makeIterator()
+            await withTaskGroup(of: Void.self) { group in
+                // Worker submitter
+                func submit(_ file: URL) {
+                    group.addTask { @Sendable in
+                        if Task.isCancelled { return }
+
+                        let ext = file.pathExtension.lowercased()
+                        let base = file.deletingPathExtension().lastPathComponent
+                        let destination = leaf.appendingPathComponent("\(base).jpg")
+
+                        // Skip if already .jpg
+                        if ext == "jpg" {
+                            await MainActor.run { skipped += 1 }
+                            return
+                        }
+
+                        // Fast rename for JPEG variants (no re-encode)
+                        if renameable.contains(ext) || file.pathExtension == "JPG" {
+                            do {
+                                if FileManager.default.fileExists(atPath: destination.path) {
+                                    try? FileManager.default.removeItem(at: destination)
+                                }
+                                try FileManager.default.moveItem(at: file, to: destination)
+                                await MainActor.run {
+                                    renamed += 1
+                                    log("  📤 Renamed: \(destination.lastPathComponent)")
+                                }
+                            } catch {
+                                await MainActor.run { log("  ❌ Rename failed: \(file.lastPathComponent)") }
+                            }
+                            return
+                        }
+
+                        // Convert other formats using JPEGWriter
+                        do {
+                            let image = try await loadImageWithoutAlpha(from: file)
+                            try await JPEGWriter.write(
+                                image: image,
+                                to: destination,
+                                quality: quality,
+                                overwrite: true,
+                                progressive: false
+                            )
+                            try? FileManager.default.removeItem(at: file)
+                            await MainActor.run {
+                                converted += 1
+                                log("  ✅ Converted: \(destination.lastPathComponent)")
+                            }
+                        } catch {
+                            await MainActor.run { log("  ❌ Convert failed: \(file.lastPathComponent)") }
+                        }
+                    }
                 }
 
-                // Fast rename for JPEG variants
-                if renameableExts.contains(ext) || file.pathExtension == "JPG" {
-                    do {
-                        if fileManager.fileExists(atPath: destination.path) {
-                            try? fileManager.removeItem(at: destination)
-                        }
-                        try fileManager.moveItem(at: file, to: destination)
-                        renamed += 1
-                        await MainActor.run {
-                            log("  📤 Renamed: \(destination.lastPathComponent)")
-                        }
-                    } catch {
-                        await MainActor.run {
-                            log("  ❌ Rename failed: \(file.lastPathComponent)")
-                        }
-                    }
-                    continue
+                // Prime the group
+                for _ in 0..<maxConcurrentFiles {
+                    if let f = it.next() { submit(f) }
                 }
-
-                // Convert other formats using your JPEGWriter (run at .utility QoS)
-                do {
-                    try await Task(priority: .utility) {
-                        let image = try await loadImageWithoutAlpha(from: file)
-                        try await JPEGWriter.write(
-                            image: image,
-                            to: destination,
-                            quality: quality,
-                            overwrite: true,
-                            progressive: false
-                        )
-                        try? fileManager.removeItem(at: file) // Remove original
-                    }.value
-
-                    converted += 1
-                    await MainActor.run {
-                        log("  ✅ Converted: \(destination.lastPathComponent)")
-                    }
-                } catch {
-                    await MainActor.run {
-                        log("  ❌ Convert failed: \(file.lastPathComponent)")
-                    }
+                // Drain & refill
+                while await group.next() != nil {
+                    if Task.isCancelled { break }
+                    if let f = it.next() { submit(f) }
                 }
             }
         }
@@ -159,6 +178,7 @@ struct ConvertToJPG {
     private static func loadImageWithoutAlpha(from url: URL) async throws -> CGImage {
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CGImage, Error>) in
             decodeQueue.async {
+                if Task.isCancelled { cont.resume(throwing: ConvertError.cannotRead); return }
                 do {
                     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                         throw ConvertError.cannotRead

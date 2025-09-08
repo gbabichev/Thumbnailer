@@ -33,66 +33,102 @@ struct ConvertToHEIC {
         leaves: [URL],
         ignoreFolderName: String,
         quality: Double,
-        log: @escaping (String) -> Void
+        log: @escaping @Sendable (String) -> Void
     ) async -> ConvertToHEICResult {
         var scanned = 0, converted = 0, skipped = 0
-        let fileManager = FileManager.default
 
-        for leaf in leaves {
-            guard (try? leaf.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
-                continue
-            }
-            scanned += 1
-            
-            guard let children = try? fileManager.contentsOfDirectory(
-                at: leaf,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
+        // Snapshot main-actor–isolated constants and compute concurrency
+        let ignored: Set<String> = await MainActor.run { Set(AppConstants.ignoredFileNames.map { $0.lowercased() }) }
+        let cpuCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        let maxLeafConcurrent = max(1, cpuCount)         // parallel leaves (folders)
+        let maxFileConcurrent = max(2, cpuCount)         // parallel files per leaf
 
-            let files = children
-                .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
-                .filter { $0.lastPathComponent != ignoreFolderName }
-                .filter { !ignoredNames.contains($0.lastPathComponent.lowercased()) }
-                .filter { isImageFile($0) }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        // Process multiple leaves in parallel (bounded), and within each leaf process files in parallel
+        var leafIter = leaves.makeIterator()
+        await withTaskGroup(of: Void.self) { group in
+            func submitLeaf(_ leaf: URL) {
+                group.addTask { @Sendable in
+                    if Task.isCancelled { return }
 
-            if files.isEmpty { continue }
-            
-            await MainActor.run {
-                log("📂 Processing: \(leaf.lastPathComponent)")
-            }
+                    // Verify directory
+                    guard (try? leaf.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return }
 
-            for file in files {
-                let ext = file.pathExtension.lowercased()
-                let base = file.deletingPathExtension().lastPathComponent
-                let destination = leaf.appendingPathComponent("\(base).heic")
+                    await MainActor.run { scanned += 1 }
 
-                // Skip if already .heic
-                if ext == "heic" {
-                    skipped += 1
-                    continue
-                }
+                    // List children
+                    guard let children = try? FileManager.default.contentsOfDirectory(
+                        at: leaf,
+                        includingPropertiesForKeys: [.isRegularFileKey],
+                        options: [.skipsHiddenFiles]
+                    ) else { return }
 
-                // Convert to HEIC using HEICWriter
-                do {
-                    let image = try await loadImage(from: file)
-                    try await HEICWriter.write(
-                        image: image,
-                        to: destination,
-                        quality: quality,
-                        overwrite: true
-                    )
-                    try? fileManager.removeItem(at: file) // Remove original
-                    converted += 1
-                    await MainActor.run {
-                        log("  ✅ Converted: \(destination.lastPathComponent)")
+                    let files = children
+                        .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+                        .filter { $0.lastPathComponent != ignoreFolderName }
+                        .filter { !ignored.contains($0.lastPathComponent.lowercased()) }
+                        .filter { isImageFile($0) }
+                        .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+
+                    if files.isEmpty { return }
+
+                    await MainActor.run { log("📂 Processing: \(leaf.lastPathComponent)") }
+
+                    // Bounded parallelism across FILES in this leaf
+                    var fileIter = files.makeIterator()
+                    await withTaskGroup(of: Void.self) { fileGroup in
+                        func submitFile(_ file: URL) {
+                            fileGroup.addTask { @Sendable in
+                                if Task.isCancelled { return }
+
+                                let ext = file.pathExtension.lowercased()
+                                let base = file.deletingPathExtension().lastPathComponent
+                                let destination = leaf.appendingPathComponent("\(base).heic")
+
+                                // Skip if already .heic
+                                if ext == "heic" {
+                                    await MainActor.run { skipped += 1 }
+                                    return
+                                }
+
+                                // Convert to HEIC using HEICWriter
+                                do {
+                                    let image = try await loadImage(from: file)
+                                    try await HEICWriter.write(
+                                        image: image,
+                                        to: destination,
+                                        quality: quality,
+                                        overwrite: true
+                                    )
+                                    try? FileManager.default.removeItem(at: file) // Remove original
+                                    await MainActor.run {
+                                        converted += 1
+                                        log("  ✅ Converted: \(destination.lastPathComponent)")
+                                    }
+                                } catch {
+                                    await MainActor.run { log("  ❌ Convert failed: \(file.lastPathComponent)") }
+                                }
+                            }
+                        }
+
+                        // Prime file workers
+                        for _ in 0..<maxFileConcurrent {
+                            if let f = fileIter.next() { submitFile(f) } else { break }
+                        }
+                        // Drain & refill
+                        while await fileGroup.next() != nil {
+                            if let f = fileIter.next() { submitFile(f) }
+                        }
                     }
-                } catch {
-                    await MainActor.run {
-                        log("  ❌ Convert failed: \(file.lastPathComponent)")
-                    }
                 }
+            }
+
+            // Prime leaf workers
+            for _ in 0..<maxLeafConcurrent {
+                if let leaf = leafIter.next() { submitLeaf(leaf) }
+            }
+            // Drain & refill
+            while await group.next() != nil {
+                if let leaf = leafIter.next() { submitLeaf(leaf) }
             }
         }
 
@@ -113,7 +149,7 @@ struct ConvertToHEIC {
     // MARK: - Helpers
     
     /// Check if file is a supported image format
-    private static func isImageFile(_ url: URL) -> Bool {
+    nonisolated private static func isImageFile(_ url: URL) -> Bool {
         guard let utType = UTType(filenameExtension: url.pathExtension) else { return false }
         return utType.conforms(to: .image)
     }
@@ -122,6 +158,7 @@ struct ConvertToHEIC {
     private static func loadImage(from url: URL) async throws -> CGImage {
         return try await withCheckedThrowingContinuation { continuation in
             Task.detached(priority: .userInitiated) {
+                if Task.isCancelled { continuation.resume(throwing: ConvertError.cannotRead); return }
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                     continuation.resume(throwing: ConvertError.cannotRead)
                     return
