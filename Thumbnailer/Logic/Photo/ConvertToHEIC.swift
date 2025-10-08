@@ -146,22 +146,33 @@ struct ConvertToHEIC {
     
     // MARK: - Helpers
 
-    /// Load image using ImageIO (preserves original size)
+    /// Load image using ImageIO (preserves original size and applies EXIF orientation)
     private static func loadImage(from url: URL) async throws -> CGImage {
         return try await withCheckedThrowingContinuation { continuation in
-            Task.detached(priority: .userInitiated) {
+            Task.detached(priority: .utility) {
                 if Task.isCancelled { continuation.resume(throwing: ConvertError.cannotRead); return }
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+
+                let result = autoreleasepool { () -> CGImage? in
+                    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+                        return nil
+                    }
+
+                    // Load image at full resolution WITH automatic orientation correction
+                    let options: [CFString: Any] = [
+                        kCGImageSourceShouldCache: false,
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: Int.max  // Full size
+                    ]
+
+                    return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+                }
+
+                guard let image = result else {
                     continuation.resume(throwing: ConvertError.cannotRead)
                     return
                 }
-                
-                // Load image at full resolution
-                guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) else {
-                    continuation.resume(throwing: ConvertError.cannotRead)
-                    return
-                }
-                
+
                 continuation.resume(returning: image)
             }
         }

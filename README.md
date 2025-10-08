@@ -105,6 +105,9 @@ open thumbnailer.xcodeproj
 
 ## 📝 Changelog
 
+### 1.2.2
+- Fixed certain photos becoming rotated when converted to HEIC.
+
 ### 1.2.1
 - Added "JFIF" as a supported JPG extension.
 
