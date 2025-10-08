@@ -23,12 +23,12 @@ enum AppConstants {
     
     /// Extensions that can be renamed to .jpg without re-encoding
     static let renameableJPEGExts: Set<String> = [
-        "jpeg", "jpe"
+        "jpeg", "jpe", "jfif"
     ]
     
     /// Supported photo file extensions (lowercased, no dot)
     static let photoExts: Set<String> = [
-        "jpg", "jpeg", "png", "heic", "heif", "tif", "tiff", "bmp", "gif", "webp"
+        "jpg", "jpeg", "jfif", "png", "heic", "heif", "tif", "tiff", "bmp", "gif", "webp"
     ]
     
     // MARK: - Video Extensions

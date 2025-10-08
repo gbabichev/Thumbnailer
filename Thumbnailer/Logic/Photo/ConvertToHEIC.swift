@@ -36,6 +36,7 @@ struct ConvertToHEIC {
 
         // Snapshot main-actor–isolated constants and compute concurrency
         let ignored: Set<String> = await MainActor.run { Set(AppConstants.ignoredFileNames.map { $0.lowercased() }) }
+        let photoExts: Set<String> = await MainActor.run { AppConstants.photoExts }
         let cpuCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
         let maxLeafConcurrent = max(1, cpuCount)         // parallel leaves (folders)
         let maxFileConcurrent = max(2, cpuCount)         // parallel files per leaf
@@ -63,7 +64,7 @@ struct ConvertToHEIC {
                         .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
                         .filter { $0.lastPathComponent != ignoreFolderName }
                         .filter { !ignored.contains($0.lastPathComponent.lowercased()) }
-                        .filter { isImageFile($0) }
+                        .filter { photoExts.contains($0.pathExtension.lowercased()) }
                         .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
 
                     if files.isEmpty { return }
@@ -144,13 +145,7 @@ struct ConvertToHEIC {
     }
     
     // MARK: - Helpers
-    
-    /// Check if file is a supported image format
-    nonisolated private static func isImageFile(_ url: URL) -> Bool {
-        guard let utType = UTType(filenameExtension: url.pathExtension) else { return false }
-        return utType.conforms(to: .image)
-    }
-    
+
     /// Load image using ImageIO (preserves original size)
     private static func loadImage(from url: URL) async throws -> CGImage {
         return try await withCheckedThrowingContinuation { continuation in

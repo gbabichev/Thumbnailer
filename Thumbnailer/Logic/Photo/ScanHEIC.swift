@@ -131,8 +131,7 @@ enum ScanHEIC {
 
     /// Check if a file looks like an image file based on extension
     private static func looksLikeImageFile(_ url: URL) -> Bool {
-        let imageExts: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "tif", "tiff", "bmp", "gif", "webp", "raw", "cr2", "nef", "arw", "dng"]
-        return imageExts.contains(url.pathExtension.lowercased())
+        return AppConstants.photoExts.contains(url.pathExtension.lowercased())
     }
 
     /// Scan multiple leaf folders. Returns a mapping of leaf -> non-HEIC list.

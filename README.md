@@ -105,6 +105,9 @@ open thumbnailer.xcodeproj
 
 ## 📝 Changelog
 
+### 1.2.1
+- Added "JFIF" as a supported JPG extension.
+
 ### 1.2
 - 4x speed improvement in thumbnail & contact sheet generation. 
 - 1.5x speed improvement in JPG conversion.

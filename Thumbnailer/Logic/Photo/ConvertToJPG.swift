@@ -49,6 +49,7 @@ struct ConvertToJPG {
         // Snapshot main-actor isolated constants for use in concurrent contexts
         let ignored: Set<String> = await MainActor.run { Set(AppConstants.ignoredFileNames.map { $0.lowercased() }) }
         let renameable: Set<String> = await MainActor.run { Set(AppConstants.renameableJPEGExts.map { $0.lowercased() }) }
+        let photoExts: Set<String> = await MainActor.run { AppConstants.photoExts }
 
         for leaf in leaves {
             guard (try? leaf.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
@@ -66,7 +67,7 @@ struct ConvertToJPG {
                 .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
                 .filter { $0.lastPathComponent != ignoreFolderName }
                 .filter { !ignored.contains($0.lastPathComponent.lowercased()) }
-                .filter { isImageFile($0) }
+                .filter { photoExts.contains($0.pathExtension.lowercased()) }
                 .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
 
             if files.isEmpty { continue }
@@ -162,13 +163,7 @@ struct ConvertToJPG {
     }
     
     // MARK: - Helpers
-    
-    /// Check if file is a supported image format
-    private static func isImageFile(_ url: URL) -> Bool {
-        guard let utType = UTType(filenameExtension: url.pathExtension) else { return false }
-        return utType.conforms(to: .image)
-    }
-    
+
     /// Load image using ImageIO and strip alpha channel for JPEG conversion
     private static func loadImageWithoutAlpha(from url: URL) async throws -> CGImage {
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CGImage, Error>) in

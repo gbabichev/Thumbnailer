@@ -29,7 +29,7 @@ enum ScanJPG {
     @inline(__always)
     static func isJpegByExtension(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
-        return ext == "jpg" || ext == "jpeg"
+        return ext == "jpg" || ext == "jpeg" || ext == "jfif"
     }
 
     /// Return true if the file begins with JPEG SOI marker (0xFF 0xD8).
