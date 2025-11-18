@@ -38,6 +38,7 @@ struct AppActions {
     var trimVideoOutros: () -> Void
     var deleteContactlessVideoLeafs: () -> Void
     var moveVideosToParent: () -> Void
+    var makeVRContactSheet: () -> Void
     
     // Simplified capability flags
     var isProcessing: Bool = false
@@ -209,7 +210,7 @@ struct AppMenuCommands: Commands {
             //.keyboardShortcut("m", modifiers: [.command, .shift]) // ⌘⇧M
             .disabled(!(actions?.canDoVideoActions ?? false))
             .help("Scans and logs videos that are not MP4.")
-            
+
             Button {
                 actions?.identifyShortVideos()
             } label: {
@@ -248,6 +249,15 @@ struct AppMenuCommands: Commands {
             .keyboardShortcut("m", modifiers: [.command, .shift]) // ⌘⇧M
             .disabled(!(actions?.canDoVideoActions ?? false))
             .help("Move video files from leaf folders to their parent directories")
+            
+            Button {
+                actions?.makeVRContactSheet()
+            } label: {
+                Label("Create VR Contact Sheet", systemImage: "visionpro")
+            }
+            .keyboardShortcut("r", modifiers: [.command, .option]) // ⌘⌥R
+            .disabled(!(actions?.canDoVideoActions ?? false))
+            .help("Create contact sheets for VR videos with vertical split")
             
             Divider()
             

@@ -240,6 +240,7 @@ struct ContentView: View {
             trimVideoOutros: { trimVideoLastSeconds() },
             deleteContactlessVideoLeafs: { deleteContactlessVideoFiles() },
             moveVideosToParent: { moveVideosToParentMenuAction() },
+            makeVRContactSheet: { makeVRVideoSheets() },
             
             // Capability flags
             isProcessing: isProcessing,
