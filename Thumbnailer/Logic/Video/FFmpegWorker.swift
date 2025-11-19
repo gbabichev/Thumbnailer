@@ -354,37 +354,3 @@ func trimVideoWithFFmpeg(_ videoURL: URL, ffmpegPath: String, options: FFmpegTri
     // For now, I'll reference the method that should exist in your FFmpegVideoTrimmer
     return await FFmpegVideoTrimmer.trimVideoWithFFmpeg(videoURL, ffmpegPath: ffmpegPath, options: options)    }
 
-func findVideos(in folder: URL, ignoringSubdirNamed ignore: String) -> [URL] {
-    guard let enumerator = FileManager.default.enumerator(
-        at: folder,
-        includingPropertiesForKeys: [.isDirectoryKey, .nameKey],
-        options: [.skipsHiddenFiles]
-    ) else {
-        return []
-    }
-    
-    var videos: [URL] = []
-    
-    while let url = enumerator.nextObject() as? URL {
-        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .nameKey])
-        let isDirectory = resourceValues?.isDirectory ?? false
-        let name = resourceValues?.name ?? url.lastPathComponent
-        
-        if isDirectory {
-            if name.caseInsensitiveCompare(ignore) == .orderedSame {
-                enumerator.skipDescendants()
-            }
-            continue
-        }
-        
-        if AppConstants.allVideoExts.contains(url.pathExtension.lowercased()) {
-            videos.append(url)
-        }
-    }
-    
-    return videos.sorted {
-        $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
-    }
-}
-
-
