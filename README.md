@@ -105,6 +105,10 @@ open thumbnailer.xcodeproj
 
 ## 📝 Changelog
 
+### 1.3.0
+- Added support for VR Videos. 
+- Bugfixes.
+
 ### 1.2.2
 - Fixed certain photos becoming rotated when converted to HEIC.
 
