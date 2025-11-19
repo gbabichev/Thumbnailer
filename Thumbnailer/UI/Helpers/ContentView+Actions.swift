@@ -179,7 +179,8 @@ extension ContentView {
                     case (false, true):
                         return (.videos, "🎬 Detected videos - scanning video folders...")
                     case (true, true):
-                        return (.photos, "ℹ️ Detected mixed content - defaulting to photo mode...")
+                        // When both are detected, prioritize videos since photos are often just contact sheets
+                        return (.videos, "ℹ️ Detected mixed content (videos + photos) - defaulting to video mode...")
                     default:
                         return (nil, "ℹ️ No media files detected")
                     }
