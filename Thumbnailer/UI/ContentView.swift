@@ -248,6 +248,12 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
             }
         }
+#if DEBUG
+            .overlay(alignment: .bottomTrailing) {
+                BetaTag()
+                    .padding(12)
+            }
+#endif
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
             if showAboutOverlay {
