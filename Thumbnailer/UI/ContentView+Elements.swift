@@ -253,6 +253,7 @@ extension ContentView {
             videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
             videoSecondsToTrim: $videoSecondsToTrim,
             shortVideoDurationSeconds: $shortVideoDurationSeconds,
+            onResetToDefaults: resetSettingsToDefaults,
             showSettingsPopover: $showSettingsPopover
         )
     }
@@ -273,6 +274,7 @@ extension ContentView {
         @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
         @Binding var shortVideoDurationSeconds: Double
+        let onResetToDefaults: () -> Void
         @Binding var showSettingsPopover: Bool
 
         var body: some View {
@@ -287,6 +289,7 @@ extension ContentView {
                         thumbnailFolderName: $thumbnailFolderName,
                         jpegQuality: $jpegQuality,
                         thumbnailFormat: thumbnailFormat,
+                        onResetToDefaults: onResetToDefaults,
                         showSettingsPopover: $showSettingsPopover
                     )
                     .tabItem { Label("General", systemImage: "gear") }
@@ -334,6 +337,7 @@ extension ContentView {
         @Binding var thumbnailFolderName: String
         @Binding var jpegQuality: Double
         var thumbnailFormat: Binding<ThumbnailFormat>
+        let onResetToDefaults: () -> Void
         @Binding var showSettingsPopover: Bool
 
         @FocusState private var thumbSizeFocused: Bool
@@ -409,16 +413,6 @@ extension ContentView {
                         .padding(.leading, 116)
                 }
 
-                VStack(alignment: .leading) {
-                    Text("JPEG / HEIC Quality: \(Int(jpegQuality * 100))%")
-                        .bold()
-                    Slider(value: $jpegQuality, in: 0.3...1.0, step: 0.05)
-                        .help("Affects thumbnails and contact sheets for both JPEG and HEIC formats")
-                    Text("HEIC is about 50% smaller than JPG at similar quality.\nRecommend setting slider to 40 for HEIC & 70 for JPG.")
-                        .font(.footnote)
-                }
-                .padding(.vertical, 4)
-
                 // Thumbnail Format Selection
                 HStack {
                     VStack(alignment: .leading) {
@@ -446,6 +440,16 @@ extension ContentView {
                     .controlSize(.extraLarge)
                     .frame(maxWidth: .infinity)
                 }
+                
+                VStack(alignment: .leading) {
+                    Text("JPEG / HEIC Quality: \(Int(jpegQuality * 100))%")
+                        .bold()
+                    Slider(value: $jpegQuality, in: 0.3...1.0, step: 0.05)
+                        .help("Affects thumbnails and contact sheets for both JPEG and HEIC formats")
+                    Text("HEIC is about 50% smaller than JPG at similar quality.\nRecommend setting slider to 40 for HEIC & 70 for JPG.")
+                        .font(.footnote)
+                }
+                .padding(.vertical, 4)
 
                 if thumbnailFormat.wrappedValue == .heic && !HEICWriter.isHEICSupported {
                     Text("⚠️ HEIC format is not supported on this system. Thumbnails will be created as JPEG instead.")
@@ -453,6 +457,14 @@ extension ContentView {
                         .foregroundColor(.orange)
                         .padding(.top, 4)
                 }
+
+                Divider()
+                    .padding(.top, 4)
+
+                Button("Reset to Defaults") {
+                    onResetToDefaults()
+                }
+                .buttonStyle(.bordered)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)

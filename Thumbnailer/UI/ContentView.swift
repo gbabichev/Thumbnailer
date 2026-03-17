@@ -49,6 +49,25 @@ enum ThumbnailFormat: String, CaseIterable, Identifiable {
     
 }
 
+private enum SettingsDefaults {
+    static let thumbnailSize = 300
+    static let thumbnailFolderName = "thumb"
+    static let thumbnailFormat = ThumbnailFormat.heic
+    static let jpegQuality = 0.40
+
+    static let photoSheetFitMode = SheetFitMode.stretch
+    static let photoSheetColumns = 4
+    static let minImagesPerLeaf = 5
+
+    static let videoCreateInParent = false
+    static let videoSheetShowDurationOverlay = true
+    static let videoSheetMaxTiles = 9
+    static let videoSheetColumns = 3
+    static let videoSheetOptimizePortraitLayout = true
+    static let videoSecondsToTrim = 60
+    static let shortVideoDurationSeconds = 120.0
+}
+
 struct ContentView: View {
     
     // MARK: - State driving selection, discovery, and processing
@@ -108,55 +127,55 @@ struct ContentView: View {
     // MARK: - User Settings
     
     /// Number of max tiles for video contact sheets.
-    @AppStorage("videoSheetMaxTiles") var videoSheetMaxTiles: Int = 10
+    @AppStorage("videoSheetMaxTiles") var videoSheetMaxTiles: Int = SettingsDefaults.videoSheetMaxTiles
     
     /// Seconds to trim from the **start** of videos when requested.
-    @AppStorage("videoSecondsToTrim") var videoSecondsToTrim: Int = 10
+    @AppStorage("videoSecondsToTrim") var videoSecondsToTrim: Int = SettingsDefaults.videoSecondsToTrim
     
     /// Minimum number of images required inside a leaf folder to be considered.
-    @AppStorage("minImagesPerLeaf") var minImagesPerLeaf: Int = 5
+    @AppStorage("minImagesPerLeaf") var minImagesPerLeaf: Int = SettingsDefaults.minImagesPerLeaf
     
     /// JPEG/HEIC export quality for thumbnails & contact sheets (0.1…1.0).
-    @AppStorage("jpegQuality") var jpegQuality: Double = 0.70
+    @AppStorage("jpegQuality") var jpegQuality: Double = SettingsDefaults.jpegQuality
     
     /// Default edge length of generated thumbnails for both photos and videos.
-    @AppStorage("thumbnailSize") var thumbnailSize: Int = 150
+    @AppStorage("thumbnailSize") var thumbnailSize: Int = SettingsDefaults.thumbnailSize
     
     /// Name of the subfolder created within each leaf to store thumbnails.
-    @AppStorage("thumbnailFolderName") var thumbnailFolderName: String = "thumb"
+    @AppStorage("thumbnailFolderName") var thumbnailFolderName: String = SettingsDefaults.thumbnailFolderName
     
     /// Column count used when composing **photo** contact sheets.
-    @AppStorage("photoSheetColumns") var photoSheetColumns: Int = 4
+    @AppStorage("photoSheetColumns") var photoSheetColumns: Int = SettingsDefaults.photoSheetColumns
     
     /// Maximum column count used when composing **video** contact sheets.
-    @AppStorage("videoSheetColumns") var videoSheetColumns: Int = 10
+    @AppStorage("videoSheetColumns") var videoSheetColumns: Int = SettingsDefaults.videoSheetColumns
 
     /// If true, portrait videos may use extra columns to keep contact sheets more compact.
-    @AppStorage("videoSheetOptimizePortraitLayout") var videoSheetOptimizePortraitLayout: Bool = true
+    @AppStorage("videoSheetOptimizePortraitLayout") var videoSheetOptimizePortraitLayout: Bool = SettingsDefaults.videoSheetOptimizePortraitLayout
 
     /// If true, render the video duration in mm:ss at the bottom-right of video contact sheets.
-    @AppStorage("videoSheetShowDurationOverlay") var videoSheetShowDurationOverlay: Bool = false
+    @AppStorage("videoSheetShowDurationOverlay") var videoSheetShowDurationOverlay: Bool = SettingsDefaults.videoSheetShowDurationOverlay
     
     /// Persisted UI choice for how to fit images on **photo** contact sheets.
     /// Backed by `SheetFitMode.rawValue`.
-    @AppStorage("photoSheetFitMode") var photoSheetFitModeRaw: String = SheetFitMode.stretch.rawValue
+    @AppStorage("photoSheetFitMode") var photoSheetFitModeRaw: String = SettingsDefaults.photoSheetFitMode.rawValue
     
     /// If true, place video contact sheets next to the video; otherwise in `thumb`.
-    @AppStorage("videoCreateInParent") var videoCreateInParent: Bool = false
+    @AppStorage("videoCreateInParent") var videoCreateInParent: Bool = SettingsDefaults.videoCreateInParent
     
     /// Threshold that defines a “short” video in seconds (used by filters/tools).
-    @AppStorage("shortVideoDurationSeconds") var shortVideoDurationSeconds: Double = 120.0
+    @AppStorage("shortVideoDurationSeconds") var shortVideoDurationSeconds: Double = SettingsDefaults.shortVideoDurationSeconds
     
     /// Persisted output format for thumbnails ("JPEG" or "HEIC").
     /// Backed by `ThumbnailFormat.rawValue`.
-    @AppStorage("thumbnailFormat") var thumbnailFormatRaw: String = ThumbnailFormat.jpeg.rawValue
+    @AppStorage("thumbnailFormat") var thumbnailFormatRaw: String = SettingsDefaults.thumbnailFormat.rawValue
 
     
     /// Two‑way binding that converts the stored `photoSheetFitModeRaw` string
     /// into a typed `SheetFitMode` for the UI, and writes changes back.
     var sheetFitModeBinding: Binding<SheetFitMode> {
         Binding(
-            get: { SheetFitMode(rawValue: photoSheetFitModeRaw) ?? .pad },
+            get: { SheetFitMode(rawValue: photoSheetFitModeRaw) ?? SettingsDefaults.photoSheetFitMode },
             set: { photoSheetFitModeRaw = $0.rawValue }
         )
     }
@@ -165,9 +184,28 @@ struct ContentView: View {
     /// the typed `ThumbnailFormat` enum used by UI controls.
     var thumbnailFormatBinding: Binding<ThumbnailFormat> {
         Binding(
-            get: { ThumbnailFormat(rawValue: thumbnailFormatRaw) ?? .jpeg },
+            get: { ThumbnailFormat(rawValue: thumbnailFormatRaw) ?? SettingsDefaults.thumbnailFormat },
             set: { thumbnailFormatRaw = $0.rawValue }
         )
+    }
+
+    func resetSettingsToDefaults() {
+        thumbnailSize = SettingsDefaults.thumbnailSize
+        thumbnailFolderName = SettingsDefaults.thumbnailFolderName
+        thumbnailFormatRaw = SettingsDefaults.thumbnailFormat.rawValue
+        jpegQuality = SettingsDefaults.jpegQuality
+
+        photoSheetFitModeRaw = SettingsDefaults.photoSheetFitMode.rawValue
+        photoSheetColumns = SettingsDefaults.photoSheetColumns
+        minImagesPerLeaf = SettingsDefaults.minImagesPerLeaf
+
+        videoCreateInParent = SettingsDefaults.videoCreateInParent
+        videoSheetShowDurationOverlay = SettingsDefaults.videoSheetShowDurationOverlay
+        videoSheetMaxTiles = SettingsDefaults.videoSheetMaxTiles
+        videoSheetColumns = SettingsDefaults.videoSheetColumns
+        videoSheetOptimizePortraitLayout = SettingsDefaults.videoSheetOptimizePortraitLayout
+        videoSecondsToTrim = SettingsDefaults.videoSecondsToTrim
+        shortVideoDurationSeconds = SettingsDefaults.shortVideoDurationSeconds
     }
     
     /// Current workspace mode; gates UI affordances for photos vs. videos.
@@ -277,7 +315,5 @@ struct ContentView: View {
         }
     }
 }
-
-
 
 
