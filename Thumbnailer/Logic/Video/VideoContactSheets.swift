@@ -23,7 +23,7 @@ import AppKit
 /// Options for video contact sheet generation.
 /// NOTE: Contains `CGColor` (non‑Sendable), so we mark the whole struct as `@unchecked Sendable`.
 struct VideoSheetOptions: @unchecked Sendable {
-    /// Number of columns on the sheet.
+    /// Maximum number of columns on the sheet. Portrait videos may use up to 2x this count.
     var columns: Int = 6
 
     /// Size of each tile (only height is significant for layout; width inferred).
@@ -43,6 +43,9 @@ struct VideoSheetOptions: @unchecked Sendable {
 
     /// If true, render the full video duration in the bottom-right corner.
     var showDurationOverlay: Bool = false
+
+    /// If true, portrait videos may use extra columns to keep sheets more compact.
+    var optimizePortraitLayout: Bool = true
 
     //init() {}
 }
@@ -76,6 +79,11 @@ struct VideoContactSheetResult: Sendable {
     static func failure(_ video: URL) -> Self {
         .init(videoURL: video, outputURL: nil, isSuccess: false)
     }
+}
+
+struct VideoSheetLayoutPlan: Sendable {
+    let columns: Int
+    let frameCount: Int
 }
 
 // MARK: - Public API
@@ -150,11 +158,21 @@ enum VideoContactSheetProcessor {
 
             // Enforce hard cap in case inputs or future changes exceed it
             let limitedFrames = frames.count > resolvedCap ? Array(frames.prefix(resolvedCap)) : frames
+            let frameAspects = limitedFrames.map { frame in
+                CGFloat(max(1, frame.width)) / CGFloat(max(1, frame.height))
+            }
+            let layoutPlan = resolvedVideoSheetLayoutPlan(
+                maxColumns: options.columns,
+                targetAspect: medianAspect(frameAspects),
+                frameCount: limitedFrames.count,
+                optimizePortraitLayout: options.optimizePortraitLayout
+            )
+            let laidOutFrames = Array(limitedFrames.prefix(layoutPlan.frameCount))
 
             // Compose sheet
             let sheet = composeSheet(
-                frames: limitedFrames,
-                columns: options.columns,
+                frames: laidOutFrames,
+                columns: layoutPlan.columns,
                 cellSize: options.cellSize,
                 spacing: options.spacing,
                 background: options.background,
@@ -304,7 +322,7 @@ private func composeSheet(
     // Use median aspect ratio for consistent cell sizing
     let targetAspect = medianAspect(aspects)
     
-    let cols = max(1, columns)
+    let cols = min(max(1, columns), frames.count)
     let rowH = max(1, Int(round(cellSize.height)))
     
     // Calculate cell width based on actual content aspect ratio
@@ -372,6 +390,29 @@ private func medianAspect(_ aspects: [CGFloat]) -> CGFloat {
     let count = sorted.count
     let mid = count / 2
     return count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+}
+
+func resolvedVideoSheetLayoutPlan(maxColumns: Int, targetAspect: CGFloat, frameCount: Int, optimizePortraitLayout: Bool) -> VideoSheetLayoutPlan {
+    guard frameCount > 0 else {
+        return VideoSheetLayoutPlan(columns: 1, frameCount: 0)
+    }
+
+    let baseColumns = max(1, maxColumns)
+    let allowsPortraitExpansion = optimizePortraitLayout && targetAspect < 1.0
+    let effectiveColumns = min(frameCount, allowsPortraitExpansion ? baseColumns * 2 : baseColumns)
+    let minimumFillRatio = 0.8
+
+    for candidateColumns in stride(from: effectiveColumns, through: 1, by: -1) {
+        let candidateFrameCount = (frameCount / candidateColumns) * candidateColumns
+        guard candidateFrameCount > 0 else { continue }
+
+        let fillRatio = Double(candidateFrameCount) / Double(frameCount)
+        if fillRatio >= minimumFillRatio || candidateFrameCount == frameCount {
+            return VideoSheetLayoutPlan(columns: candidateColumns, frameCount: candidateFrameCount)
+        }
+    }
+
+    return VideoSheetLayoutPlan(columns: 1, frameCount: frameCount)
 }
 
 /// Aspect-fit with elimination of tiny padding (< 2px) to minimize gaps

@@ -249,6 +249,7 @@ extension ContentView {
             videoCreateInParent: $videoCreateInParent,
             videoSheetMaxTiles: $videoSheetMaxTiles,
             videoSheetColumns: $videoSheetColumns,
+            videoSheetOptimizePortraitLayout: $videoSheetOptimizePortraitLayout,
             videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
             videoSecondsToTrim: $videoSecondsToTrim,
             shortVideoDurationSeconds: $shortVideoDurationSeconds,
@@ -268,6 +269,7 @@ extension ContentView {
         @Binding var videoCreateInParent: Bool
         @Binding var videoSheetMaxTiles: Int
         @Binding var videoSheetColumns: Int
+        @Binding var videoSheetOptimizePortraitLayout: Bool
         @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
         @Binding var shortVideoDurationSeconds: Double
@@ -300,6 +302,7 @@ extension ContentView {
                         videoCreateInParent: $videoCreateInParent,
                         videoSheetMaxTiles: $videoSheetMaxTiles,
                         videoSheetColumns: $videoSheetColumns,
+                        videoSheetOptimizePortraitLayout: $videoSheetOptimizePortraitLayout,
                         videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
                         videoSecondsToTrim: $videoSecondsToTrim,
                         shortVideoDurationSeconds: $shortVideoDurationSeconds
@@ -531,6 +534,7 @@ extension ContentView {
         @Binding var videoCreateInParent: Bool
         @Binding var videoSheetMaxTiles: Int
         @Binding var videoSheetColumns: Int
+        @Binding var videoSheetOptimizePortraitLayout: Bool
         @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
         @Binding var shortVideoDurationSeconds: Double
@@ -574,17 +578,36 @@ extension ContentView {
                             get: { Double(videoSheetMaxTiles) },
                             set: { videoSheetMaxTiles = Int($0) }
                         ), in: 3...40, step: 1)
+                        Text("Higher values show more moments from the video. Some videos may use fewer tiles to keep the sheet looking clean.")
+                            .font(.footnote)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading) {
-                        Text("Columns: \(videoSheetColumns)")
+                        Text("Max Columns: \(videoSheetColumns)")
                         Slider(value: Binding(
                             get: { Double(videoSheetColumns) },
                             set: { videoSheetColumns = Int($0) }
                         ), in: 1...20, step: 1)
+                        Text("Controls how wide the contact sheet can be. Lower values make it taller, higher values make it wider.")
+                            .font(.footnote)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Optimize Portrait Layout", isOn: $videoSheetOptimizePortraitLayout)
+                            .toggleStyle(.switch)
+
+                        Text("Makes portrait video sheets less tall by allowing more columns when needed.")
+                            .font(.footnote)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 2)
 
                     Divider()
 
@@ -632,6 +655,8 @@ extension ContentView {
                     .padding(.vertical, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.trailing, 14)
+                .padding(.bottom, 8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)

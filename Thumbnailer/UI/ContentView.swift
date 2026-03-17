@@ -128,8 +128,11 @@ struct ContentView: View {
     /// Column count used when composing **photo** contact sheets.
     @AppStorage("photoSheetColumns") var photoSheetColumns: Int = 4
     
-    /// Column count used when composing **video** contact sheets.
+    /// Maximum column count used when composing **video** contact sheets.
     @AppStorage("videoSheetColumns") var videoSheetColumns: Int = 10
+
+    /// If true, portrait videos may use extra columns to keep contact sheets more compact.
+    @AppStorage("videoSheetOptimizePortraitLayout") var videoSheetOptimizePortraitLayout: Bool = true
 
     /// If true, render the video duration in mm:ss at the bottom-right of video contact sheets.
     @AppStorage("videoSheetShowDurationOverlay") var videoSheetShowDurationOverlay: Bool = false
@@ -274,8 +277,6 @@ struct ContentView: View {
         }
     }
 }
-
-
 
 
 

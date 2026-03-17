@@ -91,11 +91,21 @@ enum VRVideoContactSheetProcessor {
 
             // Split each frame vertically to extract the left half (VR side-by-side format)
             let splitFrames = splitFramesVertically(limitedFrames)
+            let frameAspects = splitFrames.map { frame in
+                CGFloat(max(1, frame.width)) / CGFloat(max(1, frame.height))
+            }
+            let layoutPlan = resolvedVideoSheetLayoutPlan(
+                maxColumns: options.columns,
+                targetAspect: medianAspect(frameAspects),
+                frameCount: splitFrames.count,
+                optimizePortraitLayout: options.optimizePortraitLayout
+            )
+            let laidOutFrames = Array(splitFrames.prefix(layoutPlan.frameCount))
 
             // Compose sheet with split frames
             let sheet = composeSheet(
-                frames: splitFrames,
-                columns: options.columns,
+                frames: laidOutFrames,
+                columns: layoutPlan.columns,
                 cellSize: options.cellSize,
                 spacing: options.spacing,
                 background: options.background,
@@ -269,7 +279,7 @@ private func composeSheet(
     // Use median aspect ratio for consistent cell sizing
     let targetAspect = medianAspect(aspects)
 
-    let cols = max(1, columns)
+    let cols = min(max(1, columns), frames.count)
     let rowH = max(1, Int(round(cellSize.height)))
 
     // Calculate cell width based on actual content aspect ratio
