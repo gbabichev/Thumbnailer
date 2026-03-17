@@ -130,6 +130,9 @@ struct ContentView: View {
     
     /// Column count used when composing **video** contact sheets.
     @AppStorage("videoSheetColumns") var videoSheetColumns: Int = 10
+
+    /// If true, render the video duration in mm:ss at the bottom-right of video contact sheets.
+    @AppStorage("videoSheetShowDurationOverlay") var videoSheetShowDurationOverlay: Bool = false
     
     /// Persisted UI choice for how to fit images on **photo** contact sheets.
     /// Backed by `SheetFitMode.rawValue`.
@@ -271,7 +274,6 @@ struct ContentView: View {
         }
     }
 }
-
 
 
 

@@ -98,7 +98,8 @@ enum VRVideoContactSheetProcessor {
                 columns: options.columns,
                 cellSize: options.cellSize,
                 spacing: options.spacing,
-                background: options.background
+                background: options.background,
+                durationLabel: options.showDurationOverlay ? formatVideoDurationMMSS(duration) : nil
             )
 
             // Output path with correct extension based on format
@@ -253,7 +254,8 @@ private func composeSheet(
     columns: Int,
     cellSize: CGSize,
     spacing: CGFloat,
-    background: CGColor
+    background: CGColor,
+    durationLabel: String?
 ) -> CGImage {
     guard !frames.isEmpty else {
         return createPlaceholderImage()
@@ -317,6 +319,10 @@ private func composeSheet(
         )
 
         ctx.draw(frame, in: drawRect)
+    }
+
+    if let durationLabel, !durationLabel.isEmpty {
+        drawVideoDurationBadge(durationLabel, in: ctx, sheetSize: CGSize(width: sheetW, height: sheetH))
     }
 
     return ctx.makeImage() ?? frames[0]

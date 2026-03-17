@@ -13,8 +13,10 @@
 import Foundation
 @preconcurrency import AVFoundation
 import CoreGraphics
+import CoreText
 import ImageIO
 import UniformTypeIdentifiers
+import AppKit
 
 // MARK: - Options
 
@@ -38,6 +40,9 @@ struct VideoSheetOptions: @unchecked Sendable {
 
     /// Minimum step (seconds) between requested frames (a safety floor).
     var minStepSeconds: Double = 0.5
+
+    /// If true, render the full video duration in the bottom-right corner.
+    var showDurationOverlay: Bool = false
 
     //init() {}
 }
@@ -152,7 +157,8 @@ enum VideoContactSheetProcessor {
                 columns: options.columns,
                 cellSize: options.cellSize,
                 spacing: options.spacing,
-                background: options.background
+                background: options.background,
+                durationLabel: options.showDurationOverlay ? formatVideoDurationMMSS(duration) : nil
             )
 
             // Output path with correct extension based on format
@@ -283,7 +289,8 @@ private func composeSheet(
     columns: Int,
     cellSize: CGSize,
     spacing: CGFloat,
-    background: CGColor
+    background: CGColor,
+    durationLabel: String?
 ) -> CGImage {
     guard !frames.isEmpty else {
         return createPlaceholderImage()
@@ -347,6 +354,10 @@ private func composeSheet(
         )
         
         ctx.draw(frame, in: drawRect)
+    }
+
+    if let durationLabel, !durationLabel.isEmpty {
+        drawVideoDurationBadge(durationLabel, in: ctx, sheetSize: CGSize(width: sheetW, height: sheetH))
     }
 
     return ctx.makeImage() ?? frames[0]
@@ -429,4 +440,54 @@ private func createPlaceholderImage() -> CGImage {
     ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
     ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
     return ctx.makeImage()!
+}
+
+func formatVideoDurationMMSS(_ durationSeconds: Double) -> String {
+    let totalSeconds = max(0, Int(durationSeconds.rounded()))
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
+    return String(format: "%02d:%02d", minutes, seconds)
+}
+
+func drawVideoDurationBadge(_ text: String, in ctx: CGContext, sheetSize: CGSize) {
+    let fontSize = max(14, min(28, sheetSize.height * 0.05))
+    let font = CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
+    let attributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: CGColor(gray: 1.0, alpha: 0.98)
+    ]
+    let attributed = NSAttributedString(string: text, attributes: attributes)
+    let line = CTLineCreateWithAttributedString(attributed)
+
+    ctx.saveGState()
+    ctx.textMatrix = .identity
+    let imageBounds = CTLineGetImageBounds(line, ctx).integral
+    ctx.restoreGState()
+
+    let horizontalInset = max(12, sheetSize.width * 0.018)
+    let verticalInset = max(12, sheetSize.height * 0.03)
+    let textPaddingX = max(8, fontSize * 0.45)
+    let textPaddingY = max(5, fontSize * 0.28)
+    let badgeWidth = ceil(imageBounds.width) + textPaddingX * 2
+    let badgeHeight = ceil(imageBounds.height) + textPaddingY * 2
+    let badgeRect = CGRect(
+        x: sheetSize.width - badgeWidth - horizontalInset,
+        y: verticalInset,
+        width: badgeWidth,
+        height: badgeHeight
+    )
+
+    ctx.saveGState()
+    ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.72))
+    let badgePath = CGPath(roundedRect: badgeRect, cornerWidth: badgeHeight * 0.28, cornerHeight: badgeHeight * 0.28, transform: nil)
+    ctx.addPath(badgePath)
+    ctx.fillPath()
+
+    ctx.textMatrix = .identity
+    ctx.textPosition = CGPoint(
+        x: badgeRect.minX + textPaddingX - imageBounds.minX,
+        y: badgeRect.minY + textPaddingY - imageBounds.minY
+    )
+    CTLineDraw(line, ctx)
+    ctx.restoreGState()
 }

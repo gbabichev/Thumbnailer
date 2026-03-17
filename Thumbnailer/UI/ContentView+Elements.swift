@@ -249,6 +249,7 @@ extension ContentView {
             videoCreateInParent: $videoCreateInParent,
             videoSheetMaxTiles: $videoSheetMaxTiles,
             videoSheetColumns: $videoSheetColumns,
+            videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
             videoSecondsToTrim: $videoSecondsToTrim,
             shortVideoDurationSeconds: $shortVideoDurationSeconds,
             showSettingsPopover: $showSettingsPopover
@@ -267,6 +268,7 @@ extension ContentView {
         @Binding var videoCreateInParent: Bool
         @Binding var videoSheetMaxTiles: Int
         @Binding var videoSheetColumns: Int
+        @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
         @Binding var shortVideoDurationSeconds: Double
         @Binding var showSettingsPopover: Bool
@@ -298,6 +300,7 @@ extension ContentView {
                         videoCreateInParent: $videoCreateInParent,
                         videoSheetMaxTiles: $videoSheetMaxTiles,
                         videoSheetColumns: $videoSheetColumns,
+                        videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
                         videoSecondsToTrim: $videoSecondsToTrim,
                         shortVideoDurationSeconds: $shortVideoDurationSeconds
                     )
@@ -528,91 +531,107 @@ extension ContentView {
         @Binding var videoCreateInParent: Bool
         @Binding var videoSheetMaxTiles: Int
         @Binding var videoSheetColumns: Int
+        @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
         @Binding var shortVideoDurationSeconds: Double
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Video Contact Sheets")
-                    .bold()
-
-                VStack(alignment: .leading) {
-                    Toggle("Create in Parent", isOn: $videoCreateInParent)
-                        .toggleStyle(.switch)
-                    
-                    Text("""
-                        If enabled, video contact sheets will be created in the parent folder of each video subfolder. If disabled, they will be created in the thumbnail subfolder.
-                        """)
-                    .font(.footnote)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .multilineTextAlignment(.leading)
-                }
-                .padding(.vertical, 2)
-
-                VStack(alignment: .leading) {
-                    Text("Max Tiles: \(videoSheetMaxTiles)")
-                    Slider(value: Binding(
-                        get: { Double(videoSheetMaxTiles) },
-                        set: { videoSheetMaxTiles = Int($0) }
-                    ), in: 3...40, step: 1)
-                }
-                .padding(.vertical, 4)
-
-                VStack(alignment: .leading) {
-                    Text("Columns: \(videoSheetColumns)")
-                    Slider(value: Binding(
-                        get: { Double(videoSheetColumns) },
-                        set: { videoSheetColumns = Int($0) }
-                    ), in: 1...20, step: 1)
-                }
-                .padding(.vertical, 4)
-
-                Divider()
-
-                HStack {
-                    Text("Trimming")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Video Contact Sheets")
                         .bold()
 
-                    Image(systemName: "info.circle")
-                        .foregroundColor(.accentColor)
-                        .help("Sets how many seconds to remove from the beginning / end of videos when using 'Trim First N Seconds' tool.")
-                }
+                    VStack(alignment: .leading) {
+                        Toggle("Create in Parent", isOn: $videoCreateInParent)
+                            .toggleStyle(.switch)
+                        
+                        Text("""
+                            If enabled, video contact sheets will be created in the parent folder of each video subfolder. If disabled, they will be created in the thumbnail subfolder.
+                            """)
+                        .font(.footnote)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
+                    }
+                    .padding(.vertical, 2)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Show Video Length", isOn: $videoSheetShowDurationOverlay)
+                            .toggleStyle(.switch)
 
-                VStack(alignment: .leading) {
-                    Text("Seconds to Trim: \(videoSecondsToTrim)")
+                        Text("Adds the full video duration in mm:ss to the bottom-right corner of generated video contact sheets.")
+                            .font(.footnote)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 2)
+                    
 
-                    Slider(
-                        value: Binding(
-                            get: { Double(videoSecondsToTrim) },
-                            set: { videoSecondsToTrim = Int($0) }
-                        ),
-                        in: 1...60,
-                        step: 1
-                    )
-                    .help("Choose how many seconds to trim from the beginning or end of videos (1-60 seconds).")
-                }
-                .padding(.vertical, 4)
+                    VStack(alignment: .leading) {
+                        Text("Max Tiles: \(videoSheetMaxTiles)")
+                        Slider(value: Binding(
+                            get: { Double(videoSheetMaxTiles) },
+                            set: { videoSheetMaxTiles = Int($0) }
+                        ), in: 3...40, step: 1)
+                    }
+                    .padding(.vertical, 4)
 
-                VStack(alignment: .leading) {
-                    let minutes = shortVideoDurationSeconds / 60.0
-                    Text("Short Video Threshold: \(String(format: "%.1f", minutes)) min")
+                    VStack(alignment: .leading) {
+                        Text("Columns: \(videoSheetColumns)")
+                        Slider(value: Binding(
+                            get: { Double(videoSheetColumns) },
+                            set: { videoSheetColumns = Int($0) }
+                        ), in: 1...20, step: 1)
+                    }
+                    .padding(.vertical, 4)
 
-                    Slider(value: $shortVideoDurationSeconds, in: 30...600, step: 30)
-                        .help("Videos shorter than this duration will be flagged as 'short videos'")
+                    Divider()
 
                     HStack {
-                        Text("30s")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("10min")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        Text("Trimming")
+                            .bold()
+
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.accentColor)
+                            .help("Sets how many seconds to remove from the beginning / end of videos when using 'Trim First N Seconds' tool.")
                     }
+
+                    VStack(alignment: .leading) {
+                        Text("Seconds to Trim: \(videoSecondsToTrim)")
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(videoSecondsToTrim) },
+                                set: { videoSecondsToTrim = Int($0) }
+                            ),
+                            in: 1...60,
+                            step: 1
+                        )
+                        .help("Choose how many seconds to trim from the beginning or end of videos (1-60 seconds).")
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading) {
+                        let minutes = shortVideoDurationSeconds / 60.0
+                        Text("Short Video Threshold: \(String(format: "%.1f", minutes)) min")
+
+                        Slider(value: $shortVideoDurationSeconds, in: 30...600, step: 30)
+                            .help("Videos shorter than this duration will be flagged as 'short videos'")
+
+                        HStack {
+                            Text("30s")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("10min")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -695,4 +714,3 @@ extension ContentView {
     }
     
 }
-

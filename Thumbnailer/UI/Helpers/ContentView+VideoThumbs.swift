@@ -57,6 +57,7 @@ extension ContentView {
         let cellW = cellH * 16.0 / 9.0
         let q = jpegQuality
         let runBegan = Date()
+        let showDurationOverlay = videoSheetShowDurationOverlay
         
         // Capture format selection
         let selectedFormat = ThumbnailFormat(rawValue: thumbnailFormatRaw) ?? .jpeg
@@ -164,6 +165,7 @@ extension ContentView {
                     opts.cellSize = CGSize(width: cellW, height: cellH)
                     opts.spacing = 0
                     opts.background = CGColor(gray: 0.08, alpha: 1)
+                    opts.showDurationOverlay = showDurationOverlay
 
                     // Snapshot sendable values to avoid capturing in group
                     let taskOutputDir = outputDir
