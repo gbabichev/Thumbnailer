@@ -105,6 +105,10 @@ open thumbnailer.xcodeproj
 
 ## 📝 Changelog
 
+### 1.4.0
+- Added a toggle for optimizing portrait video contact sheets.
+- Added a toggle for overlaying the video length to a video contact sheet. 
+
 ### 1.3.0
 - Added support for VR Videos. 
 - Bugfixes.
