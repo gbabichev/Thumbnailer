@@ -123,6 +123,9 @@ struct ContentView: View {
     
     /// Controls whether the in‑app log is visible in the UI.
     @State var showLog: Bool = true
+
+    /// Controls the in-app About overlay visibility.
+    @State var showAboutOverlay = false
     
     // MARK: - User Settings
     
@@ -246,6 +249,12 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 800, minHeight: 500)
+        .overlay {
+            if showAboutOverlay {
+                AboutOverlayView(isPresented: $showAboutOverlay)
+                    .zIndex(1)
+            }
+        }
         .dropDestination(
             for: URL.self,
             action: { urls, _ in
@@ -259,6 +268,11 @@ struct ContentView: View {
         .toolbar { buildToolbar }
         .focusedSceneValue(\.appActions, AppActions(
             open: { selectFolders() },
+            showAbout: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showAboutOverlay = true
+                }
+            },
             process: { startPhotoThumbnailProcessing() },
             delete: { deleteThumbFolders() },
             clear: { clearAll() },
@@ -315,5 +329,4 @@ struct ContentView: View {
         }
     }
 }
-
 

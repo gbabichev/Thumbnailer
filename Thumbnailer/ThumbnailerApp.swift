@@ -18,15 +18,6 @@ struct Thumbnailer: App {
             AppMenuCommands()
             SidebarCommands()
         }
-        
-        // MARK: - Custom About Window
-        Window("About Thumbnailer", id: "AboutWindow") {
-            AboutView()
-                .frame(width: 400, height: 400)
-        }
-        .windowResizability(.contentSize) // Makes window non-resizable and size == content
-        .defaultSize(width: 400, height: 400)
-        .windowStyle(.hiddenTitleBar)
     }
 }
 

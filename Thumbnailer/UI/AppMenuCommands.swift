@@ -13,6 +13,7 @@ import SwiftUI
 
 struct AppActions {
     var open: () -> Void
+    var showAbout: () -> Void
     var process: () -> Void
     var delete: () -> Void
     var clear: () -> Void
@@ -66,7 +67,6 @@ extension FocusedValues {
 }
 
 struct AppMenuCommands: Commands {
-    @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.appActions) private var actions
 
     var body: some Commands {
@@ -273,7 +273,7 @@ struct AppMenuCommands: Commands {
         
         CommandGroup(replacing: .appInfo) {
             Button {
-                openWindow(id: "AboutWindow")
+                actions?.showAbout()
             } label: {
                 Label("About Thumbnailer", systemImage: "info.circle")
             }
