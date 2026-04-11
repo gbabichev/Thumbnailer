@@ -13,6 +13,24 @@ import Foundation
 import UserNotifications
 import AppKit
 
+private actor PhotoConversionProgressCounter {
+    private var completed = 0
+
+    func increment() -> Int {
+        completed += 1
+        return completed
+    }
+}
+
+private actor PhotoScanProgressCounter {
+    private var completed = 0
+
+    func increment() -> Int {
+        completed += 1
+        return completed
+    }
+}
+
 extension ContentView {
     // MARK: - Photo Tools
     
@@ -26,14 +44,33 @@ extension ContentView {
         
         isProcessing = true
         logLines.removeAll()
-        
-        let progressTracker = createProgressTracker(total: leaves.count)
+
+        let totalCandidates = leaves.reduce(into: 0) { total, leaf in
+            total += ScanJPG.countCandidates(root: leaf)
+        }
+        let progressTracker = totalCandidates > 0 ? createProgressTracker(total: totalCandidates) : nil
+        let progressCounter = PhotoScanProgressCounter()
         var allBadFiles: [URL] = []
+
+        if totalCandidates == 0 {
+            appendLog("ℹ️ No candidate files found.")
+        } else {
+            appendLog("ℹ️ Scanning \(totalCandidates) file(s).")
+        }
         
         for leaf in leaves {
             appendLog("🔍 Scanning JPGs under: \(leaf.path)")
             
-            let nonJPEGs = ScanJPG.scan(root: leaf, checkMagic: checkMagic)
+            let nonJPEGs = ScanJPG.scan(
+                root: leaf,
+                checkMagic: checkMagic,
+                didInspectFile: {
+                    Task { @MainActor in
+                        let completed = await progressCounter.increment()
+                        progressTracker?.updateTo(completed)
+                    }
+                }
+            )
             allBadFiles.append(contentsOf: nonJPEGs)
             
             if nonJPEGs.isEmpty {
@@ -43,7 +80,6 @@ extension ContentView {
                 nonJPEGs.forEach { appendLog("    ⚠️ \($0.lastPathComponent)") }
             }
             
-            progressTracker.increment()
         }
         
         let totalBad = allBadFiles.count
@@ -55,7 +91,7 @@ extension ContentView {
         }
         
         isProcessing = false
-        progressTracker.finish()
+        progressTracker?.finish()
     }
     
     @MainActor
@@ -74,20 +110,33 @@ extension ContentView {
         logLines.removeAll()
         
         let targets = leafFolders.map(\.url)
+        let totalCandidates = targets.reduce(into: 0) { total, leaf in
+            total += ScanHEIC.countCandidates(root: leaf)
+        }
+        let progressCounter = PhotoScanProgressCounter()
         
         currentWork?.cancel()
         currentWork = Task(priority: .userInitiated) {
-            let progressTracker = createProgressTracker(total: targets.count)
+            let progressTracker = totalCandidates > 0 ? createProgressTracker(total: totalCandidates) : nil
             
             await MainActor.run {
                 appendLog("🔍 Scanning for non-HEIC image files...")
-                appendLog("🔍 Checking \(targets.count) folder(s)")
+                appendLog("🔍 Checking \(totalCandidates) image file(s)")
             }
             
             var totalNonHeicFiles = 0
             var foldersWithIssues = 0
             
-            let results = await ScanHEIC.scanLeafFolders(targets, checkMagic: false)
+            let results = await ScanHEIC.scanLeafFolders(
+                targets,
+                checkMagic: false,
+                didInspectFile: {
+                    Task { @MainActor in
+                        let completed = await progressCounter.increment()
+                        progressTracker?.updateTo(completed)
+                    }
+                }
+            )
             
             for (_, folder) in targets.enumerated() {
                 if Task.isCancelled { break }
@@ -115,13 +164,12 @@ extension ContentView {
                         totalNonHeicFiles += nonHeicFiles.count
                     }
                     
-                    progressTracker.increment()
                 }
             }
             
             await MainActor.run {
                 isProcessing = false
-                progressTracker.finish()
+                progressTracker?.finish()
                 
                 if Task.isCancelled {
                     appendLog("ℹ️ HEIC scan cancelled.")
@@ -161,15 +209,25 @@ extension ContentView {
         isProcessing = true
         logLines.removeAll()
         appendLog("🖼️ Converting images to .jpg…")
-        
-        let progressTracker = createProgressTracker(total: leaves.count)
+
+        let totalCandidates = await ConvertToJPG.countCandidates(
+            leaves: leaves,
+            ignoreFolderName: thumbnailFolderName
+        )
+        let progressTracker = totalCandidates > 0 ? createProgressTracker(total: totalCandidates) : nil
+        let progressCounter = PhotoConversionProgressCounter()
         let runBegan = Date()
+
+        if totalCandidates == 0 {
+            appendLog("ℹ️ No candidate image files found.")
+        } else {
+            appendLog("ℹ️ Found \(totalCandidates) candidate image file(s).")
+        }
         
         // FIXED: Properly wrap in currentWork task for cancellation
         currentWork?.cancel()
         currentWork = Task(priority: .userInitiated) {
             do {
-                // Use the existing ConvertToJPG.run method but track progress by folder
                 let result = await ConvertToJPG.run(
                     leaves: leaves,
                     ignoreFolderName: thumbnailFolderName,
@@ -177,17 +235,16 @@ extension ContentView {
                     log: { line in
                         // Check for cancellation in the log callback
                         guard !Task.isCancelled else { return }
-                        
-                        // Update progress when we see folder processing messages
-                        if line.hasPrefix("📂 Processing:") {
-                            Task { @MainActor in
-                                guard !Task.isCancelled else { return }
-                                progressTracker.increment()
-                            }
-                        }
                         Task { @MainActor in
                             guard !Task.isCancelled else { return }
                             appendLog(line)
+                        }
+                    },
+                    didProcessFile: {
+                        guard !Task.isCancelled else { return }
+                        let completed = await progressCounter.increment()
+                        await MainActor.run {
+                            progressTracker?.updateTo(completed)
                         }
                     }
                 )
@@ -231,7 +288,7 @@ extension ContentView {
             
             await MainActor.run {
                 isProcessing = false
-                progressTracker.finish()
+                progressTracker?.finish()
             }
         }
     }
@@ -262,15 +319,25 @@ extension ContentView {
         isProcessing = true
         logLines.removeAll()
         appendLog("🖼️ Converting images to .heic…")
-        
-        let progressTracker = createProgressTracker(total: leaves.count)
+
+        let totalCandidates = await ConvertToHEIC.countCandidates(
+            leaves: leaves,
+            ignoreFolderName: thumbnailFolderName
+        )
+        let progressTracker = totalCandidates > 0 ? createProgressTracker(total: totalCandidates) : nil
+        let progressCounter = PhotoConversionProgressCounter()
         let runBegan = Date()
+
+        if totalCandidates == 0 {
+            appendLog("ℹ️ No candidate image files found.")
+        } else {
+            appendLog("ℹ️ Found \(totalCandidates) candidate image file(s).")
+        }
         
         // FIXED: Properly wrap in currentWork task for cancellation
         currentWork?.cancel()
         currentWork = Task(priority: .userInitiated) {
             do {
-                // Use the ConvertToHEIC.run method
                 let result = await ConvertToHEIC.run(
                     leaves: leaves,
                     ignoreFolderName: thumbnailFolderName,
@@ -278,17 +345,16 @@ extension ContentView {
                     log: { line in
                         // Check for cancellation in the log callback
                         guard !Task.isCancelled else { return }
-                        
-                        // Update progress when we see folder processing messages
-                        if line.hasPrefix("📂 Processing:") {
-                            Task { @MainActor in
-                                guard !Task.isCancelled else { return }
-                                progressTracker.increment()
-                            }
-                        }
                         Task { @MainActor in
                             guard !Task.isCancelled else { return }
                             appendLog(line)
+                        }
+                    },
+                    didProcessFile: {
+                        guard !Task.isCancelled else { return }
+                        let completed = await progressCounter.increment()
+                        await MainActor.run {
+                            progressTracker?.updateTo(completed)
                         }
                     }
                 )
@@ -331,7 +397,7 @@ extension ContentView {
             
             await MainActor.run {
                 isProcessing = false
-                progressTracker.finish()
+                progressTracker?.finish()
             }
         }
     }

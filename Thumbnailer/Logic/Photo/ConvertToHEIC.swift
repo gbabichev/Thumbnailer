@@ -24,13 +24,45 @@ struct ConvertToHEICResult {
 }
 
 struct ConvertToHEIC {
+    static func countCandidates(
+        leaves: [URL],
+        ignoreFolderName: String
+    ) async -> Int {
+        let fileManager = FileManager.default
+        let ignored: Set<String> = await MainActor.run { Set(AppConstants.ignoredFileNames.map { $0.lowercased() }) }
+        let photoExts: Set<String> = await MainActor.run { AppConstants.photoExts }
+
+        var total = 0
+        for leaf in leaves {
+            guard (try? leaf.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                continue
+            }
+
+            guard let children = try? fileManager.contentsOfDirectory(
+                at: leaf,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+
+            total += children
+                .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+                .filter { $0.lastPathComponent != ignoreFolderName }
+                .filter { !ignored.contains($0.lastPathComponent.lowercased()) }
+                .filter { photoExts.contains($0.pathExtension.lowercased()) }
+                .count
+        }
+
+        return total
+    }
+
     /// Convert all suitable images under the given leaf folders to `.heic`.
     /// Uses HEICWriter and AppStorage quality setting.
     static func run(
         leaves: [URL],
         ignoreFolderName: String,
         quality: Double,
-        log: @escaping @Sendable (String) -> Void
+        log: @escaping @Sendable (String) -> Void,
+        didProcessFile: (@Sendable () async -> Void)? = nil
     ) async -> ConvertToHEICResult {
         var scanned = 0, converted = 0, skipped = 0
 
@@ -85,6 +117,7 @@ struct ConvertToHEIC {
                                 // Skip if already .heic
                                 if ext == "heic" {
                                     await MainActor.run { skipped += 1 }
+                                    if let didProcessFile { await didProcessFile() }
                                     return
                                 }
 
@@ -105,6 +138,7 @@ struct ConvertToHEIC {
                                 } catch {
                                     await MainActor.run { log("  ❌ Convert failed: \(file.lastPathComponent)") }
                                 }
+                                if let didProcessFile { await didProcessFile() }
                             }
                         }
 

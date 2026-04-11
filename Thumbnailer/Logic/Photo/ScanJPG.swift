@@ -49,6 +49,40 @@ enum ScanJPG {
         }
     }
 
+    static func countCandidates(
+        root: URL,
+        ignore: Set<String> = defaultIgnore,
+        skipHiddenDirectories: Bool = false
+    ) -> Int {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isHiddenKey],
+            options: [.skipsPackageDescendants],
+            errorHandler: { _, _ in true }
+        ) else {
+            return 0
+        }
+
+        var count = 0
+        for case let url as URL in enumerator {
+            if skipHiddenDirectories,
+               let vals = try? url.resourceValues(forKeys: [.isDirectoryKey, .isHiddenKey]),
+               vals.isDirectory == true,
+               vals.isHidden == true,
+               url != root {
+                enumerator.skipDescendants()
+                continue
+            }
+
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            if values?.isRegularFile != true { continue }
+            if ignore.contains(url.lastPathComponent) { continue }
+            count += 1
+        }
+        return count
+    }
+
     /// Recursively walk `root` and return files that are not JPEGs (and not ignored).
     /// - Parameters:
     ///   - root: Folder to scan.
@@ -59,7 +93,8 @@ enum ScanJPG {
         root: URL,
         ignore: Set<String> = defaultIgnore,
         checkMagic: Bool = false,
-        skipHiddenDirectories: Bool = false
+        skipHiddenDirectories: Bool = false,
+        didInspectFile: (@Sendable () -> Void)? = nil
     ) -> [URL] {
         var nonJpegs: [URL] = []
         let fm = FileManager.default
@@ -87,6 +122,8 @@ enum ScanJPG {
             if values?.isRegularFile != true { continue }
 
             if ignore.contains(url.lastPathComponent) { continue }
+
+            didInspectFile?()
 
             if !isJpegByExtension(url) {
                 nonJpegs.append(url)

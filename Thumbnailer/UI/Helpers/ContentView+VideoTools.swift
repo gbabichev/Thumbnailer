@@ -9,6 +9,15 @@ import SwiftUI
 import AVFoundation
 import UserNotifications
 
+private actor VRVideoProgressCounter {
+    private var completed = 0
+
+    func increment(by amount: Int = 1) -> Int {
+        completed += amount
+        return completed
+    }
+}
+
 extension ContentView {
     
     // MARK: - Video Tools
@@ -748,23 +757,37 @@ extension ContentView {
         // Cancel previous run if any
         currentWork?.cancel()
         currentWork = Task(priority: .utility) {
-            let progressTracker = createProgressTracker(total: targets.count)
-
+            var progressTracker: ProgressTracker?
             do {
-
                 await MainActor.run {
                     let formatName = selectedFormat.rawValue
                     appendLog("🥽 Creating VR video contact sheets in \(formatName) format (with vertical split)")
                 }
 
+                let workByFolder = await MainActor.run {
+                    targets.map { folder in
+                        (
+                            folder: folder,
+                            work: findVideos(in: folder, ignoringSubdirNamed: videoCreateInParent ? "" : folderName)
+                                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+                        )
+                    }
+                }
+                let totalVideos = workByFolder.reduce(0) { $0 + $1.work.count }
+                progressTracker = totalVideos > 0 ? createProgressTracker(total: totalVideos) : nil
+                let progressCounter = VRVideoProgressCounter()
+
                 // --- Live reporting helpers (overall ETA + heartbeats) ---
                 actor OverallMeter {
                     let start = Date()
                     private var processed = 0
-                    private var known = 0
+                    let known: Int
                     private var lastHeartbeat = Date()
 
-                    func addKnown(_ n: Int) { known += n }
+                    init(known: Int) {
+                        self.known = max(1, known)
+                    }
+
                     func incProcessed() { processed += 1 }
 
                     /// At most every ~10s after at least 5s, returns a log line; otherwise nil.
@@ -783,17 +806,24 @@ extension ContentView {
                         return nil
                     }
                 }
-                let overallMeter = OverallMeter()
+                let overallMeter = OverallMeter(known: totalVideos)
                 // ---------------------------------------------------------
 
-                var totalVideos = 0
                 var totalSuccess = 0
                 var totalFailures = 0
                 var failedVideoPaths: [String] = []
 
-                for folder in targets {
+                if totalVideos == 0 {
+                    await MainActor.run {
+                        appendLog("ℹ️ No video files found.")
+                    }
+                }
+
+                for folderWork in workByFolder {
                     // Check for cancellation at folder level
                     try Task.checkCancellation()
+                    let folder = folderWork.folder
+                    let work = folderWork.work
 
                     await MainActor.run {
                         appendLog("🎬 Scanning for VR videos under: \(folder.path)")
@@ -813,26 +843,18 @@ extension ContentView {
                         do {
                             try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
                         } catch {
+                            let completed = await progressCounter.increment(by: work.count)
                             await MainActor.run {
                                 appendLog("❌ Failed to create thumbnail folder: \(outputDir.path) — \(error.localizedDescription)")
-                                progressTracker.increment()
+                                progressTracker?.updateTo(completed)
                             }
                             continue
                         }
                     }
 
-                    // Build work list - call helper methods on main actor
-                    let work = await MainActor.run {
-                        findVideos(in: folder, ignoringSubdirNamed: videoCreateInParent ? "" : folderName)
-                            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-                    }
-                    await overallMeter.addKnown(work.count)
-                    totalVideos += work.count
-
                     if work.isEmpty {
                         await MainActor.run {
                             appendLog("  No video files found")
-                            progressTracker.increment()
                         }
                         continue
                     }
@@ -922,10 +944,9 @@ extension ContentView {
                                 totalFailures += 1
                             }
 
-                            // Update progress with fractional completion for this folder
-                            let folderProgress = Double(completedInFolder) / Double(work.count)
+                            let completed = await progressCounter.increment()
                             await MainActor.run {
-                                progressTracker.updateWithFraction(folderProgress)
+                                progressTracker?.updateTo(completed)
                             }
 
                             await overallMeter.incProcessed()
@@ -955,11 +976,6 @@ extension ContentView {
                     // Stop the folder heartbeat when this folder is done.
                     folderHeartbeatTask?.cancel()
                     folderHeartbeatTask = nil
-
-                    // Folder complete - move to next
-                    await MainActor.run {
-                        progressTracker.increment()
-                    }
 
                     // Final cancellation check before continuing to next folder
                     try Task.checkCancellation()
@@ -1027,7 +1043,7 @@ extension ContentView {
             // Always clean up UI state
             await MainActor.run {
                 isProcessing = false
-                progressTracker.finish()
+                progressTracker?.finish()
             }
         }
     }

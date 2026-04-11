@@ -30,6 +30,43 @@ enum ScanHEIC {
     /// Default ignored file names (case-sensitive, like the Python version).
     static let defaultIgnore = AppConstants.ignoredFileNames
 
+    static func countCandidates(
+        root: URL,
+        ignore: Set<String> = defaultIgnore,
+        skipHiddenDirectories: Bool = false
+    ) -> Int {
+        let fm = FileManager.default
+
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isHiddenKey],
+            options: [.skipsPackageDescendants],
+            errorHandler: { _, _ in true }
+        ) else {
+            return 0
+        }
+
+        var count = 0
+        for case let url as URL in enumerator {
+            if skipHiddenDirectories,
+               let vals = try? url.resourceValues(forKeys: [.isDirectoryKey, .isHiddenKey]),
+               vals.isDirectory == true,
+               vals.isHidden == true,
+               url != root {
+                enumerator.skipDescendants()
+                continue
+            }
+
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            if values?.isRegularFile != true { continue }
+            if ignore.contains(url.lastPathComponent) { continue }
+            if !looksLikeImageFile(url) { continue }
+            count += 1
+        }
+
+        return count
+    }
+
     /// Return true if the URL has a HEIC-like extension.
     @inline(__always)
     static func isHeicByExtension(_ url: URL) -> Bool {
@@ -84,7 +121,8 @@ enum ScanHEIC {
         root: URL,
         ignore: Set<String> = defaultIgnore,
         checkMagic: Bool = false,
-        skipHiddenDirectories: Bool = false
+        skipHiddenDirectories: Bool = false,
+        didInspectFile: (@Sendable () -> Void)? = nil
     ) -> [URL] {
         var nonHeics: [URL] = []
         let fm = FileManager.default
@@ -116,6 +154,8 @@ enum ScanHEIC {
             // Only check image files to avoid reporting non-image files as "non-HEIC"
             if !looksLikeImageFile(url) { continue }
 
+            didInspectFile?()
+
             if !isHeicByExtension(url) {
                 nonHeics.append(url)
                 continue
@@ -138,12 +178,13 @@ enum ScanHEIC {
     static func scanLeafFolders(
         _ leaves: [URL],
         ignore: Set<String> = defaultIgnore,
-        checkMagic: Bool = false
+        checkMagic: Bool = false,
+        didInspectFile: (@Sendable () -> Void)? = nil
     ) async -> [URL: [URL]] {
         var out: [URL: [URL]] = [:]
         for leaf in leaves {
             let bad = await Task(priority: .userInitiated) {
-                ScanHEIC.scan(root: leaf, ignore: ignore, checkMagic: checkMagic)
+                ScanHEIC.scan(root: leaf, ignore: ignore, checkMagic: checkMagic, didInspectFile: didInspectFile)
             }.value
             out[leaf] = bad
         }

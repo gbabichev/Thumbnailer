@@ -885,8 +885,10 @@ extension ContentView {
         ToolbarItemGroup(placement: .primaryAction) {
             if isProcessing {
                 Button(role: .cancel) { cancelCurrentWork() } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
+                    Label("Cancel", systemImage: "xmark.circle.fill")
+                        .symbolRenderingMode(.multicolor)
                 }
+                .tint(.red)
                 .keyboardShortcut(".", modifiers: [.command]) // Cmd+.
                 .help("Stop the current job")
             } else {
