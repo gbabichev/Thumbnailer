@@ -16,19 +16,28 @@ import Foundation
 @MainActor
 class ProgressTracker {
     private let updateProgress: (Double?) -> Void
+    private let updateETA: (TimeInterval?) -> Void
     let total: Int
     private var completed: Int = 0
+    private let startedAt = Date()
     
     /// Initialize progress tracker
     /// - Parameters:
     ///   - total: Total number of items to process
     ///   - updateProgress: Callback to update UI progress (0.0-1.0, or nil to clear)
-    init(total: Int, updateProgress: @escaping (Double?) -> Void) {
+    ///   - updateETA: Callback to update ETA in seconds, or nil to clear/hide
+    init(
+        total: Int,
+        updateProgress: @escaping (Double?) -> Void,
+        updateETA: @escaping (TimeInterval?) -> Void
+    ) {
         self.total = max(1, total) // Avoid division by zero
         self.updateProgress = updateProgress
+        self.updateETA = updateETA
         
         // Start at 0%
         updateProgress(0)
+        updateETA(nil)
     }
     
     /// Mark one item as completed
@@ -43,6 +52,7 @@ class ProgressTracker {
         completed = min(completedCount, total) // Don't exceed total
         let progress = Double(completed) / Double(total)
         updateProgress(progress)
+        updateETA(estimateETA())
     }
     
     /// Set fractional progress for current item (useful for nested operations)
@@ -57,12 +67,30 @@ class ProgressTracker {
         let clampedFraction = max(0, min(1, fraction))
         let progress = (Double(completed) + clampedFraction) / Double(total)
         updateProgress(progress)
+
+        let effectiveCompleted = min(Double(total), Double(completed) + clampedFraction)
+        updateETA(estimateETA(effectiveCompleted: effectiveCompleted))
     }
     
     
     /// Mark as complete and clear progress UI
     func finish() {
         updateProgress(nil)
+        updateETA(nil)
+    }
+
+    private func estimateETA(effectiveCompleted: Double? = nil) -> TimeInterval? {
+        let done = effectiveCompleted ?? Double(completed)
+        guard done > 0, done < Double(total) else { return nil }
+
+        let elapsed = Date().timeIntervalSince(startedAt)
+        guard elapsed > 0 else { return nil }
+
+        let rate = done / elapsed
+        guard rate > 0 else { return nil }
+
+        let remaining = Double(total) - done
+        return remaining / rate
     }
     
 }
@@ -73,9 +101,15 @@ extension ContentView {
     /// - Parameter total: Total number of items to process
     /// - Returns: Progress tracker that updates this view's progress property
     func createProgressTracker(total: Int) -> ProgressTracker {
-        ProgressTracker(total: total) { progress in
-            // Since we're already on MainActor, update immediately without Task wrapper
-            self.progress = progress
-        }
+        ProgressTracker(
+            total: total,
+            updateProgress: { progress in
+                // Since we're already on MainActor, update immediately without Task wrapper
+                self.progress = progress
+            },
+            updateETA: { eta in
+                self.progressETASeconds = eta
+            }
+        )
     }
 }

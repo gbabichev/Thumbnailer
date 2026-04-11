@@ -29,8 +29,16 @@ extension ContentView {
                             .help("Workingâ€¦")
                     }
                 }
-                Text("\(Int((p * 100).rounded()))%")
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("\(Int((p * 100).rounded()))%")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if let eta = progressETASeconds, let etaText = formatProgressETA(eta) {
+                        Text("ETA \(etaText)")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
             }
         }
         .padding(.top, 6)
@@ -48,6 +56,7 @@ extension ContentView {
                 // When progress disappears, clear stall state
                 isProgressStalled = false
                 lastProgressValue = -1
+                progressETASeconds = nil
             }
         }
         .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
@@ -59,6 +68,23 @@ extension ContentView {
                 isProgressStalled = true
             }
         }
+    }
+
+    private func formatProgressETA(_ eta: TimeInterval) -> String? {
+        guard eta.isFinite, eta > 0 else { return nil }
+
+        let rounded = Int(eta.rounded())
+        let hours = rounded / 3600
+        let minutes = (rounded % 3600) / 60
+        let seconds = rounded % 60
+
+        if hours > 0 {
+            return String(format: "%dh %02dm", hours, minutes)
+        }
+        if minutes > 0 {
+            return String(format: "%dm %02ds", minutes, seconds)
+        }
+        return String(format: "%ds", seconds)
     }
     
     @ViewBuilder

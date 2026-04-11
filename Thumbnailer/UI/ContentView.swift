@@ -94,6 +94,8 @@ struct ContentView: View {
     @State var isProcessing = false
     /// Optional overall progress 0.0–1.0; `nil` hides the progress view.
     @State var progress: Double? = nil
+    /// Estimated seconds remaining for the current tracked operation.
+    @State var progressETASeconds: TimeInterval? = nil
     
     /// When true, the UI hints that progress hasn’t moved recently.
     @State var isProgressStalled = false
