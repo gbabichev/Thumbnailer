@@ -105,6 +105,10 @@ open thumbnailer.xcodeproj
 
 ## 📝 Changelog
 
+### 1.4.1
+- Improved progress bar tracking.
+- Improved video scanning, introduced Short Video Manager.
+
 ### 1.4.0
 - Added a toggle for optimizing portrait video contact sheets.
 - Added a toggle for overlaying the video length to a video contact sheet. 
