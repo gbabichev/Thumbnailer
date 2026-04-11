@@ -39,6 +39,11 @@ extension ContentView {
     
     @MainActor
     func identifyShortVideosMenuAction() {
+        openShortVideoManager()
+    }
+
+    @MainActor
+    func openShortVideoManager() {
         let leaves = leafFolders.map(\.url)
         guard !leaves.isEmpty else {
             appendLog("No video leaf folders to scan. Select a folder first.")
@@ -50,17 +55,111 @@ extension ContentView {
             appendLog("No video files detected. Switch to video mode or select folders with videos.")
             return
         }
-        
+
+        showShortVideoManager = true
+        if shortVideoResults.isEmpty && !isScanningShortVideos {
+            scanShortVideos()
+        }
+    }
+
+    @MainActor
+    func scanShortVideos() {
+        let leaves = leafFolders.map(\.url)
+        guard !leaves.isEmpty else {
+            appendLog("No video leaf folders to scan. Select a folder first.")
+            return
+        }
+
+        guard mode == .videos else {
+            appendLog("No video files detected. Switch to video mode or select folders with videos.")
+            return
+        }
+
         let durationMinutes = shortVideoDurationSeconds / 60.0
         appendLog("🎬 Scanning for short videos (< \(String(format: "%.1f", durationMinutes)) min)…")
-        
-        IdentifyShortVideos.runScan(
-            leafs: leaves,
-            maxDurationSeconds: shortVideoDurationSeconds,
-            ignoreFolderNames: [thumbnailFolderName],
-            includeHidden: false,
-            appendLog: { appendLog($0) }
-        )
+
+        shortVideoScanTask?.cancel()
+        selectedShortVideoIDs.removeAll()
+        isScanningShortVideos = true
+        shortVideoResults = []
+
+        let threshold = shortVideoDurationSeconds
+        let ignoredFolders = Set([thumbnailFolderName])
+        shortVideoScanTask = Task(priority: .userInitiated) {
+            let results = await IdentifyShortVideos.identifyShortVideos(
+                leafs: leaves,
+                maxDurationSeconds: threshold,
+                ignoreFolderNames: ignoredFolders,
+                includeHidden: false
+            )
+
+            if Task.isCancelled { return }
+
+            let items = results.map { ShortVideoItem(url: $0.url, duration: $0.duration) }
+            await MainActor.run {
+                isScanningShortVideos = false
+                shortVideoResults = items
+
+                if items.isEmpty {
+                    appendLog("✅ No short videos found.")
+                } else {
+                    appendLog("ℹ️ Found \(items.count) short video(s). Open the Short Videos manager to review and delete.")
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func confirmDeleteSelectedShortVideos() {
+        let victims = shortVideoResults.filter { selectedShortVideoIDs.contains($0.id) }
+        guard !victims.isEmpty else { return }
+        pendingShortVideoDeletion = victims
+        showConfirmDeleteShortVideos = true
+    }
+
+    @MainActor
+    func confirmDeleteAllShortVideos() {
+        guard !shortVideoResults.isEmpty else { return }
+        pendingShortVideoDeletion = shortVideoResults
+        showConfirmDeleteShortVideos = true
+    }
+
+    @MainActor
+    func deleteSingleShortVideo(_ item: ShortVideoItem) {
+        pendingShortVideoDeletion = [item]
+        showConfirmDeleteShortVideos = true
+    }
+
+    @MainActor
+    func actuallyDeleteShortVideos() async {
+        let victims = pendingShortVideoDeletion
+        pendingShortVideoDeletion = []
+        guard !victims.isEmpty else { return }
+
+        var deletedURLs = Set<URL>()
+        var failures: [URL] = []
+
+        for item in victims {
+            do {
+                var trashedURL: NSURL?
+                try FileManager.default.trashItem(at: item.url, resultingItemURL: &trashedURL)
+                deletedURLs.insert(item.url)
+                appendLog("🗑️ Trashed short video: \(item.url.lastPathComponent)")
+            } catch {
+                failures.append(item.url)
+                appendLog("❌ Failed to trash \(item.url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+
+        shortVideoResults.removeAll { deletedURLs.contains($0.url) }
+        selectedShortVideoIDs.subtract(deletedURLs)
+
+        if !deletedURLs.isEmpty {
+            appendLog("✅ Removed \(deletedURLs.count) short video(s) to Trash.")
+        }
+        if !failures.isEmpty {
+            appendLog("⚠️ Failed to remove \(failures.count) short video(s).")
+        }
     }
     
     // ---

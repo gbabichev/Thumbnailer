@@ -20,6 +20,13 @@ struct LeafFolder: Identifiable, Hashable {
     var displayName: String { url.lastPathComponent }
 }
 
+struct ShortVideoItem: Identifiable, Hashable {
+    let url: URL
+    let duration: Double
+
+    var id: URL { url }
+}
+
 enum ProcessingMode { case photos, videos }
 
 // User-facing mode names for the UI
@@ -126,6 +133,27 @@ struct ContentView: View {
 
     /// Controls the in-app About overlay visibility.
     @State var showAboutOverlay = false
+
+    /// Controls the short-video manager sheet visibility.
+    @State var showShortVideoManager = false
+
+    /// True while the short-video manager is actively scanning.
+    @State var isScanningShortVideos = false
+
+    /// Active task backing the short-video scan.
+    @State var shortVideoScanTask: Task<Void, Never>? = nil
+
+    /// Current short-video scan results shown in the manager UI.
+    @State var shortVideoResults: [ShortVideoItem] = []
+
+    /// Selected short-video rows in the manager list.
+    @State var selectedShortVideoIDs: Set<URL> = []
+
+    /// Pending short-video deletion candidates awaiting confirmation.
+    @State var pendingShortVideoDeletion: [ShortVideoItem] = []
+
+    /// Controls the short-video deletion confirmation alert.
+    @State var showConfirmDeleteShortVideos = false
     
     // MARK: - User Settings
     
@@ -166,7 +194,7 @@ struct ContentView: View {
     /// If true, place video contact sheets next to the video; otherwise in `thumb`.
     @AppStorage("videoCreateInParent") var videoCreateInParent: Bool = SettingsDefaults.videoCreateInParent
     
-    /// Threshold that defines a “short” video in seconds (used by filters/tools).
+    /// Threshold that defines a “short” video in seconds for the short-video manager.
     @AppStorage("shortVideoDurationSeconds") var shortVideoDurationSeconds: Double = SettingsDefaults.shortVideoDurationSeconds
     
     /// Persisted output format for thumbnails ("JPEG" or "HEIC").
@@ -208,7 +236,6 @@ struct ContentView: View {
         videoSheetColumns = SettingsDefaults.videoSheetColumns
         videoSheetOptimizePortraitLayout = SettingsDefaults.videoSheetOptimizePortraitLayout
         videoSecondsToTrim = SettingsDefaults.videoSecondsToTrim
-        shortVideoDurationSeconds = SettingsDefaults.shortVideoDurationSeconds
     }
     
     /// Current workspace mode; gates UI affordances for photos vs. videos.
@@ -298,7 +325,7 @@ struct ContentView: View {
             validatePhotoThumbs: {Task { await validatePhotoThumbsMenuAction()}},
             
             // Video Tools
-            identifyShortVideos: { identifyShortVideosMenuAction() },
+            identifyShortVideos: { openShortVideoManager() },
             scanNonMP4Videos: { scanNonMP4VideosMenuAction() },
             trimVideoIntros: { trimVideoFirstSeconds() },
             trimVideoOutros: { trimVideoLastSeconds() },
@@ -327,6 +354,9 @@ struct ContentView: View {
                 Text("This will move \(pendingContactlessVictims.count) \(mediaType) folder(s) without a matching contact sheet to the Trash.")
             }
         }
+        .sheet(isPresented: $showShortVideoManager) {
+            shortVideoManagerSheet
+        }
         .onChange(of: showLog) { oldValue, newValue in
             if newValue && !oldValue {
                 // Log just became visible - refresh from disk
@@ -335,4 +365,3 @@ struct ContentView: View {
         }
     }
 }
-

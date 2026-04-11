@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 import Combine
 
 extension ContentView {
@@ -252,7 +253,6 @@ extension ContentView {
             videoSheetOptimizePortraitLayout: $videoSheetOptimizePortraitLayout,
             videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
             videoSecondsToTrim: $videoSecondsToTrim,
-            shortVideoDurationSeconds: $shortVideoDurationSeconds,
             onResetToDefaults: resetSettingsToDefaults,
             showSettingsPopover: $showSettingsPopover
         )
@@ -273,7 +273,6 @@ extension ContentView {
         @Binding var videoSheetOptimizePortraitLayout: Bool
         @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
-        @Binding var shortVideoDurationSeconds: Double
         let onResetToDefaults: () -> Void
         @Binding var showSettingsPopover: Bool
 
@@ -307,8 +306,7 @@ extension ContentView {
                         videoSheetColumns: $videoSheetColumns,
                         videoSheetOptimizePortraitLayout: $videoSheetOptimizePortraitLayout,
                         videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
-                        videoSecondsToTrim: $videoSecondsToTrim,
-                        shortVideoDurationSeconds: $shortVideoDurationSeconds
+                        videoSecondsToTrim: $videoSecondsToTrim
                     )
                     .tabItem { Label("Videos", systemImage: "video") }
                 }
@@ -549,7 +547,6 @@ extension ContentView {
         @Binding var videoSheetOptimizePortraitLayout: Bool
         @Binding var videoSheetShowDurationOverlay: Bool
         @Binding var videoSecondsToTrim: Int
-        @Binding var shortVideoDurationSeconds: Double
 
         var body: some View {
             ScrollView {
@@ -646,25 +643,6 @@ extension ContentView {
                         .help("Choose how many seconds to trim from the beginning or end of videos (1-60 seconds).")
                     }
                     .padding(.vertical, 4)
-
-                    VStack(alignment: .leading) {
-                        let minutes = shortVideoDurationSeconds / 60.0
-                        Text("Short Video Threshold: \(String(format: "%.1f", minutes)) min")
-
-                        Slider(value: $shortVideoDurationSeconds, in: 30...600, step: 30)
-                            .help("Videos shorter than this duration will be flagged as 'short videos'")
-
-                        HStack {
-                            Text("30s")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("10min")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(.trailing, 14)
@@ -677,6 +655,187 @@ extension ContentView {
     }
     
     // MARK: - Toolbar
+    var shortVideoManagerSheet: some View {
+        ShortVideoManagerView(
+            thresholdSeconds: $shortVideoDurationSeconds,
+            results: shortVideoResults,
+            selection: $selectedShortVideoIDs,
+            isScanning: isScanningShortVideos,
+            showDeleteConfirmation: $showConfirmDeleteShortVideos,
+            pendingDeleteCount: pendingShortVideoDeletion.count,
+            onScan: { scanShortVideos() },
+            onDeleteSelected: { confirmDeleteSelectedShortVideos() },
+            onDeleteAll: { confirmDeleteAllShortVideos() },
+            onDeleteSingle: { deleteSingleShortVideo($0) },
+            onConfirmDelete: { Task { await actuallyDeleteShortVideos() } },
+            onClose: { showShortVideoManager = false }
+        )
+        .frame(minWidth: 760, minHeight: 520)
+    }
+
+    private struct ShortVideoManagerView: View {
+        @Binding var thresholdSeconds: Double
+        let results: [ShortVideoItem]
+        @Binding var selection: Set<URL>
+        let isScanning: Bool
+        @Binding var showDeleteConfirmation: Bool
+        let pendingDeleteCount: Int
+        let onScan: () -> Void
+        let onDeleteSelected: () -> Void
+        let onDeleteAll: () -> Void
+        let onDeleteSingle: (ShortVideoItem) -> Void
+        let onConfirmDelete: () -> Void
+        let onClose: () -> Void
+
+        private var thresholdMinutes: String {
+            String(format: "%.1f", thresholdSeconds / 60.0)
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Short Videos")
+                            .font(.title2.weight(.semibold))
+                        Text("Scan loaded video folders, review clips under the threshold, then delete the ones you don't want.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Done") {
+                        onClose()
+                    }
+                    .keyboardShortcut(.escape, modifiers: [])
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Threshold: \(thresholdMinutes) min")
+                            .font(.headline)
+                        Spacer()
+                        if isScanning {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Scanning…")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("\(results.count) match\(results.count == 1 ? "" : "es")")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Slider(value: $thresholdSeconds, in: 30...600, step: 30)
+                        .disabled(isScanning)
+
+                    HStack {
+                        Text("30s")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("10min")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(16)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                HStack {
+                    Button {
+                        onScan()
+                    } label: {
+                        Label(isScanning ? "Scanning" : "Scan Short Videos", systemImage: "magnifyingglass")
+                    }
+                    .disabled(isScanning)
+
+                    Button(role: .destructive) {
+                        onDeleteSelected()
+                    } label: {
+                        Label("Delete Selected", systemImage: "trash")
+                    }
+                    .disabled(isScanning || selection.isEmpty)
+
+                    Button(role: .destructive) {
+                        onDeleteAll()
+                    } label: {
+                        Label("Delete All", systemImage: "trash.slash")
+                    }
+                    .disabled(isScanning || results.isEmpty)
+
+                    Spacer()
+
+                    if !selection.isEmpty {
+                        Text("\(selection.count) selected")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                List(selection: $selection) {
+                    ForEach(results) { item in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.url.lastPathComponent)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                Text(item.url.deletingLastPathComponent().path)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Text(shortVideoDurationText(item.duration))
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundStyle(.secondary)
+
+                            Button("Reveal") {
+                                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                            }
+                            .buttonStyle(.borderless)
+
+                            Button(role: .destructive) {
+                                onDeleteSingle(item)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .tag(item.id)
+                    }
+                }
+                .overlay {
+                    if !isScanning && results.isEmpty {
+                        ContentUnavailableView(
+                            "No Short Videos",
+                            systemImage: "film",
+                            description: Text("Run a scan to populate this list.")
+                        )
+                    }
+                }
+            }
+            .padding(20)
+            .alert("Delete short videos?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Move to Trash", role: .destructive) {
+                    onConfirmDelete()
+                }
+            } message: {
+                Text("This will move \(pendingDeleteCount) short video(s) to the Trash.")
+            }
+        }
+
+        private func shortVideoDurationText(_ seconds: Double) -> String {
+            if seconds < 60 {
+                return String(format: "%.1fs", seconds)
+            }
+
+            let minutes = Int(seconds / 60)
+            let remainingSeconds = seconds.truncatingRemainder(dividingBy: 60)
+            return String(format: "%dm %.1fs", minutes, remainingSeconds)
+        }
+    }
+
     @ToolbarContentBuilder
     var buildToolbar: some ToolbarContent {
         // LEFT: Open (folder picker), Reset (clear UI), Settings (popover)

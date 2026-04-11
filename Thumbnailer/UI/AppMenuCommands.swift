@@ -214,10 +214,11 @@ struct AppMenuCommands: Commands {
             Button {
                 actions?.identifyShortVideos()
             } label: {
-                Label("Identify Short Videos", systemImage: "film")
+                Label("Short Videos Manager", systemImage: "film")
             }
             .keyboardShortcut("v", modifiers: [.command, .shift]) // ⌘⇧V
             .disabled(!(actions?.canDoVideoActions ?? false))
+            .help("Open the short-video manager to scan, review, and delete matching clips.")
 
             Divider()
             
