@@ -26,6 +26,34 @@ enum ThumbnailOutputFormat {
     }
 }
 
+private actor PhotoProcessingCounters {
+    let totalImages: Int
+    private(set) var processedImages = 0
+    private(set) var totalSheets = 0
+    private(set) var successfulSheets = 0
+
+    init(totalImages: Int) {
+        self.totalImages = totalImages
+    }
+
+    func incrementProcessedImages() -> (processedImages: Int, totalImages: Int) {
+        processedImages += 1
+        return (processedImages, totalImages)
+    }
+
+    func recordSheetCompletion(success: Bool) -> (totalSheets: Int, successfulSheets: Int) {
+        totalSheets += 1
+        if success {
+            successfulSheets += 1
+        }
+        return (totalSheets, successfulSheets)
+    }
+
+    func snapshot() -> (processedImages: Int, totalImages: Int, totalSheets: Int, successfulSheets: Int) {
+        (processedImages, totalImages, totalSheets, successfulSheets)
+    }
+}
+
 extension ContentView {
     // MARK: - Photo Actions
 
@@ -56,7 +84,6 @@ extension ContentView {
         currentWork?.cancel()
         currentWork = Task(priority: .utility) {
             var totalImages = 0
-            var processedImages = 0
             
             // First pass: count total images for accurate progress
             for leaf in targets {
@@ -65,6 +92,7 @@ extension ContentView {
             }
             
             let progressTracker = createProgressTracker(total: totalImages)
+            let counters = PhotoProcessingCounters(totalImages: totalImages)
             await MainActor.run {
                 let formatName = selectedFormat.rawValue
                 appendLog("🖼 Processing \(totalImages) images across \(targets.count) folders as \(formatName)")
@@ -87,12 +115,12 @@ extension ContentView {
                         format: outputFormat,
                         progressCallback: { @Sendable imageProcessed in
                             Task { @MainActor in
-                                processedImages += 1
-                                progressTracker.updateTo(processedImages)
+                                let counts = await counters.incrementProcessedImages()
+                                progressTracker.updateTo(counts.processedImages)
                                 
                                 // Log every 10th image or significant milestones
-                                if imageProcessed % 10 == 0 || processedImages % 50 == 0 {
-                                    appendLog("  📷 Processed \(processedImages)/\(totalImages) images")
+                                if imageProcessed % 10 == 0 || counts.processedImages % 50 == 0 {
+                                    appendLog("  📷 Processed \(counts.processedImages)/\(counts.totalImages) images")
                                 }
                             }
                         }
@@ -113,6 +141,7 @@ extension ContentView {
 
             // Finalize & notify
             let duration = Date().timeIntervalSince(runBegan)
+            let finalCounts = await counters.snapshot()
             await MainActor.run {
                 isProcessing = false
                 progressTracker.finish()
@@ -126,7 +155,7 @@ extension ContentView {
                     content.body = String(format: "Processing cancelled after %.0fs", duration)
                 } else {
                     appendLog("✅ Processing complete.")
-                    let summary = "ℹ️ Processed: \(processedImages) images across \(targets.count) folders"
+                    let summary = "ℹ️ Processed: \(finalCounts.processedImages) images across \(targets.count) folders"
                     appendLog(summary)
 
                     content.title = "Photo thumbnails complete"
@@ -170,9 +199,6 @@ extension ContentView {
         currentWork?.cancel()
         currentWork = Task(priority: .utility) {
             var totalImages = 0
-            var processedImages = 0
-            var totalSheets = 0
-            var successfulSheets = 0
             
             // Count total images for progress
             for leaf in targets {
@@ -181,6 +207,7 @@ extension ContentView {
             }
             
             let progressTracker = createProgressTracker(total: totalImages + targets.count) // +targets for composition steps
+            let counters = PhotoProcessingCounters(totalImages: totalImages)
             await MainActor.run {
                 appendLog("🖼 Creating contact sheets for \(totalImages) images across \(targets.count) folders")
             }
@@ -215,10 +242,10 @@ extension ContentView {
                         format: .jpeg,
                         progressCallback: { @Sendable _ in
                             Task { @MainActor in
-                                processedImages += 1
-                                progressTracker.updateTo(processedImages)
-                                if processedImages % 10 == 0 {
-                                    appendLog("    📷 Processed \(processedImages)/\(totalImages) images")
+                                let counts = await counters.incrementProcessedImages()
+                                progressTracker.updateTo(counts.processedImages)
+                                if counts.processedImages % 10 == 0 {
+                                    appendLog("    📷 Processed \(counts.processedImages)/\(counts.totalImages) images")
                                 }
                             }
                         }
@@ -257,15 +284,14 @@ extension ContentView {
                     await MainActor.run {
                         appendLog("  ✅ Wrote sheet: \(outputPath.lastPathComponent)")
                         progressTracker.increment() // composition step
-                        totalSheets += 1
-                        successfulSheets += 1
                     }
+                    _ = await counters.recordSheetCompletion(success: true)
 
                 } catch is CancellationError {
                     // Best-effort cleanup
+                    _ = await counters.recordSheetCompletion(success: false)
                     await MainActor.run {
                         appendLog("  ⚠️ Sheet cancelled: \(leaf.lastPathComponent)")
-                        totalSheets += 1
                         progressTracker.increment()
                     }
                     if FileManager.default.fileExists(atPath: leaf.path) { /* no-op */ }
@@ -275,10 +301,10 @@ extension ContentView {
                     let dir = leaf.appendingPathComponent(tempName, isDirectory: true)
                     if FileManager.default.fileExists(atPath: dir.path) { try? FileManager.default.removeItem(at: dir) }
 
+                    _ = await counters.recordSheetCompletion(success: false)
                     await MainActor.run {
                         appendLog("  ❌ \(error.localizedDescription)")
                         progressTracker.increment()
-                        totalSheets += 1
                     }
                 }
             }
@@ -300,6 +326,7 @@ extension ContentView {
 
             // Finalize & notify
             let duration = Date().timeIntervalSince(runBegan)
+            let finalCounts = await counters.snapshot()
             await MainActor.run {
                 isProcessing = false
                 progressTracker.finish()
@@ -313,8 +340,8 @@ extension ContentView {
                     content.body = String(format: "Processing cancelled after %.0fs", duration)
                 } else {
                     appendLog("✅ Photo sheets complete.")
-                    let failedSheets = totalSheets - successfulSheets
-                    let summary = "ℹ️ Created: \(successfulSheets) sheets — ✅ \(successfulSheets)  ❌ \(failedSheets)"
+                    let failedSheets = finalCounts.totalSheets - finalCounts.successfulSheets
+                    let summary = "ℹ️ Created: \(finalCounts.successfulSheets) sheets — ✅ \(finalCounts.successfulSheets)  ❌ \(failedSheets)"
                     appendLog(summary)
 
                     if failedSheets == 0 {
