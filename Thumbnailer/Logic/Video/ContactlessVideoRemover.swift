@@ -12,12 +12,15 @@
 import Foundation
 
 struct ContactlessVideoFileRemover {
+    nonisolated private static let allowedVideoExtensions: Set<String> = [
+        "mp4", "mov", "m4v", "avi", "mkv", "wmv", "flv", "webm", "mpg", "mpeg", "3gp", "mts", "m2ts"
+    ]
     
     /// Finds video files that don't have corresponding contact sheets in the thumb folder
-    static func findContactlessVideoFiles(
+    nonisolated static func findContactlessVideoFiles(
         in leafFolders: [URL],
         thumbFolderName: String,
-        log: @escaping (String) -> Void
+        log: @escaping @Sendable (String) -> Void
     ) -> [URL] {
         var contactlessVideos: [URL] = []
         let fm = FileManager.default
@@ -44,7 +47,7 @@ struct ContactlessVideoFileRemover {
             // Check thumb folder
             let thumbFolder = leafFolder.appendingPathComponent(thumbFolderName, isDirectory: true)
             guard fm.fileExists(atPath: thumbFolder.path, isDirectory: &isDir), isDir.boolValue else {
-                log("  ⚠️ No thumb folder found - all videos are contactless")
+                log("  ⚠️ No thumb folder found - marking \(videoFiles.count) video(s) as contactless")
                 contactlessVideos.append(contentsOf: videoFiles)
                 continue
             }
@@ -52,21 +55,24 @@ struct ContactlessVideoFileRemover {
             // Get all contact sheet files in thumb folder (should be .jpg files)
             let contactSheets = findContactSheets(in: thumbFolder)
             log("  🖼️ Found \(contactSheets.count) contact sheet(s) in thumb folder")
+            let contactSheetBases = Set(contactSheets.map { $0.deletingPathExtension().lastPathComponent })
             
             // For each video file, check if there's a corresponding contact sheet
+            var missingInFolder = 0
             for videoFile in videoFiles {
                 let videoBaseName = videoFile.deletingPathExtension().lastPathComponent
-                let hasContactSheet = contactSheets.contains { contactSheet in
-                    let contactBaseName = contactSheet.deletingPathExtension().lastPathComponent
-                    return contactBaseName == videoBaseName
-                }
+                let hasContactSheet = contactSheetBases.contains(videoBaseName)
                 
                 if !hasContactSheet {
-                    log("    ❌ No contact sheet for: \(videoFile.lastPathComponent)")
+                    missingInFolder += 1
                     contactlessVideos.append(videoFile)
-                } else {
-                    log("    ✅ Has contact sheet: \(videoFile.lastPathComponent)")
                 }
+            }
+
+            if missingInFolder == 0 {
+                log("  ✅ All \(videoFiles.count) video(s) have contact sheets")
+            } else {
+                log("  ⚠️ \(missingInFolder)/\(videoFiles.count) video(s) are missing contact sheets")
             }
         }
         
@@ -78,7 +84,7 @@ struct ContactlessVideoFileRemover {
     // MARK: - Private Helpers
     
     /// Find all video files in a folder, excluding a specific subdirectory
-    private static func findVideoFiles(in folder: URL, ignoringSubdir: String) -> [URL] {
+    nonisolated private static func findVideoFiles(in folder: URL, ignoringSubdir: String) -> [URL] {
         let fm = FileManager.default
         
         guard let enumerator = fm.enumerator(
@@ -106,7 +112,7 @@ struct ContactlessVideoFileRemover {
             
             // Check if it's a video file
             let ext = url.pathExtension.lowercased()
-            if AppConstants.allVideoExts.contains(ext) {
+            if allowedVideoExtensions.contains(ext) {
                 videoFiles.append(url)
             }
         }
@@ -117,7 +123,7 @@ struct ContactlessVideoFileRemover {
     }
     
     /// Find all contact sheet files (typically .jpg) in the thumb folder
-    private static func findContactSheets(in thumbFolder: URL) -> [URL] {
+    nonisolated private static func findContactSheets(in thumbFolder: URL) -> [URL] {
         let fm = FileManager.default
         
         guard let items = try? fm.contentsOfDirectory(

@@ -677,19 +677,24 @@ extension ContentView {
             return
         }
 
+        let thumbFolderName = thumbnailFolderName
+        isProcessing = true
         appendLog("🔍 Scanning for contactless video files…")
 
-        Task(priority: .userInitiated) {
+        currentWork?.cancel()
+        currentWork = Task.detached(priority: .userInitiated) {
             // First, just find the contactless videos without deleting
             let contactlessVideos = ContactlessVideoFileRemover.findContactlessVideoFiles(
                 in: leaves,
-                thumbFolderName: thumbnailFolderName,
+                thumbFolderName: thumbFolderName,
                 log: { message in
                     Task { @MainActor in appendLog(message) }
                 }
             )
 
             await MainActor.run {
+                isProcessing = false
+
                 if contactlessVideos.isEmpty {
                     appendLog("✅ All video files have contact sheets. Nothing to delete.")
                     return
