@@ -15,6 +15,8 @@ import Foundation
 actor AppLogWriter {
     private var buffer: [String] = []
     private var flushTask: Task<Void, Never>?
+    private static let maxLogFileSizeBytes = 1_048_576
+    private static let maxRotatedLogFiles = 5
     
     // DateFormatter is expensive to create, so we keep one per actor
     private let timestampFormatter: DateFormatter = {
@@ -72,23 +74,9 @@ actor AppLogWriter {
     }
     
     private static func writeLinesToDisk(_ lines: [String]) async {
-        // Resolve <AppName> dynamically and sanitize it for use in a path segment
-        let info = Bundle.main.infoDictionary
-        let appName =
-            (info?["CFBundleDisplayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? (info?["CFBundleName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? ProcessInfo.processInfo.processName
-        let safeAppName = appName.replacingOccurrences(of: "/", with: "-")
-
-        // Build: ~/Library/Logs/<AppName>/latest.txt
-        let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
-        let logURL = base
-            .appendingPathComponent("Logs", isDirectory: true)
-            .appendingPathComponent(safeAppName, isDirectory: true)
-            .appendingPathComponent("latest.txt")
-
         do {
             let fm = FileManager.default
+            let logURL = logFileURL()
             let dir = logURL.deletingLastPathComponent()
 
             // Ensure the Logs/<AppName> folder exists
@@ -101,15 +89,20 @@ actor AppLogWriter {
                 fm.createFile(atPath: logURL.path, contents: nil)
             }
 
+            let pendingData = Data((lines.joined(separator: "\n") + "\n").utf8)
+            try rotateIfNeeded(
+                at: logURL,
+                directory: dir,
+                incomingBytes: pendingData.count,
+                fileManager: fm
+            )
+
             // Append all lines in one write operation
             let fh = try FileHandle(forWritingTo: logURL)
             defer { try? fh.close() }
             try fh.seekToEnd()
 
-            let combined = lines.joined(separator: "\n") + "\n"
-            if let data = combined.data(using: .utf8) {
-                try fh.write(contentsOf: data)
-            }
+            try fh.write(contentsOf: pendingData)
         } catch {
             // Failsafe: log to Console so failures are visible during development
             NSLog("AppLog writeLinesToDisk failed: %@", String(describing: error))
@@ -131,6 +124,54 @@ actor AppLogWriter {
             .appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent(safeAppName, isDirectory: true)
             .appendingPathComponent("latest.txt")
+    }
+
+    private static func rotateIfNeeded(
+        at logURL: URL,
+        directory: URL,
+        incomingBytes: Int,
+        fileManager: FileManager
+    ) throws {
+        let currentSize = (try? fileManager.attributesOfItem(atPath: logURL.path)[.size] as? NSNumber)?.intValue ?? 0
+        guard currentSize > 0,
+              currentSize + incomingBytes > maxLogFileSizeBytes else {
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let stamp = formatter.string(from: Date())
+        let rotatedURL = directory.appendingPathComponent("latest-\(stamp).txt")
+
+        if fileManager.fileExists(atPath: rotatedURL.path) {
+            try? fileManager.removeItem(at: rotatedURL)
+        }
+        try fileManager.moveItem(at: logURL, to: rotatedURL)
+        fileManager.createFile(atPath: logURL.path, contents: nil)
+
+        try pruneRotatedLogs(in: directory, fileManager: fileManager)
+    }
+
+    private static func pruneRotatedLogs(in directory: URL, fileManager: FileManager) throws {
+        let files = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        let rotatedLogs = files
+            .filter { $0.lastPathComponent.hasPrefix("latest-") && $0.pathExtension == "txt" }
+            .sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhsDate > rhsDate
+            }
+
+        guard rotatedLogs.count > maxRotatedLogFiles else { return }
+        for url in rotatedLogs.dropFirst(maxRotatedLogFiles) {
+            try? fileManager.removeItem(at: url)
+        }
     }
 
     /// Read the entire log file and return lines (without trailing empty line)
