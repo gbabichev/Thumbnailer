@@ -52,6 +52,25 @@ extension ContentView {
     }
 
     @MainActor
+    func openSilentVideoManager() {
+        let leaves = leafFolders.map(\.url)
+        guard !leaves.isEmpty else {
+            appendLog("No video leaf folders to scan. Select a folder first.")
+            return
+        }
+
+        guard mode == .videos else {
+            appendLog("No video files detected. Switch to video mode or select folders with videos.")
+            return
+        }
+
+        showSilentVideoManager = true
+        if silentVideoResults.isEmpty && !isScanningSilentVideos {
+            scanSilentVideos()
+        }
+    }
+
+    @MainActor
     func openShortVideoManager() {
         let leaves = leafFolders.map(\.url)
         guard !leaves.isEmpty else {
@@ -119,6 +138,50 @@ extension ContentView {
     }
 
     @MainActor
+    func scanSilentVideos() {
+        let leaves = leafFolders.map(\.url)
+        guard !leaves.isEmpty else {
+            appendLog("No video leaf folders to scan. Select a folder first.")
+            return
+        }
+
+        guard mode == .videos else {
+            appendLog("No video files detected. Switch to video mode or select folders with videos.")
+            return
+        }
+
+        appendLog("🔇 Scanning for videos with no audio tracks…")
+
+        silentVideoScanTask?.cancel()
+        selectedSilentVideoIDs.removeAll()
+        isScanningSilentVideos = true
+        silentVideoResults = []
+
+        let ignoredFolders = Set([thumbnailFolderName])
+        silentVideoScanTask = Task(priority: .userInitiated) {
+            let results = await IdentifySilentVideos.identifySilentVideos(
+                leafs: leaves,
+                ignoreFolderNames: ignoredFolders,
+                includeHidden: false
+            )
+
+            if Task.isCancelled { return }
+
+            let items = results.map { SilentVideoItem(url: $0) }
+            await MainActor.run {
+                isScanningSilentVideos = false
+                silentVideoResults = items
+
+                if items.isEmpty {
+                    appendLog("✅ No silent videos found.")
+                } else {
+                    appendLog("ℹ️ Found \(items.count) silent video(s). Open Silent Videos manager to review and delete.")
+                }
+            }
+        }
+    }
+
+    @MainActor
     func confirmDeleteSelectedShortVideos() {
         let victims = shortVideoResults.filter { selectedShortVideoIDs.contains($0.id) }
         guard !victims.isEmpty else { return }
@@ -168,6 +231,59 @@ extension ContentView {
         }
         if !failures.isEmpty {
             appendLog("⚠️ Failed to remove \(failures.count) short video(s).")
+        }
+    }
+
+    @MainActor
+    func confirmDeleteSelectedSilentVideos() {
+        let victims = silentVideoResults.filter { selectedSilentVideoIDs.contains($0.id) }
+        guard !victims.isEmpty else { return }
+        pendingSilentVideoDeletion = victims
+        showConfirmDeleteSilentVideos = true
+    }
+
+    @MainActor
+    func confirmDeleteAllSilentVideos() {
+        guard !silentVideoResults.isEmpty else { return }
+        pendingSilentVideoDeletion = silentVideoResults
+        showConfirmDeleteSilentVideos = true
+    }
+
+    @MainActor
+    func deleteSingleSilentVideo(_ item: SilentVideoItem) {
+        pendingSilentVideoDeletion = [item]
+        showConfirmDeleteSilentVideos = true
+    }
+
+    @MainActor
+    func actuallyDeleteSilentVideos() async {
+        let victims = pendingSilentVideoDeletion
+        pendingSilentVideoDeletion = []
+        guard !victims.isEmpty else { return }
+
+        var deletedURLs = Set<URL>()
+        var failures: [URL] = []
+
+        for item in victims {
+            do {
+                var trashedURL: NSURL?
+                try FileManager.default.trashItem(at: item.url, resultingItemURL: &trashedURL)
+                deletedURLs.insert(item.url)
+                appendLog("🗑️ Trashed silent video: \(item.url.lastPathComponent)")
+            } catch {
+                failures.append(item.url)
+                appendLog("❌ Failed to trash \(item.url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+
+        silentVideoResults.removeAll { deletedURLs.contains($0.url) }
+        selectedSilentVideoIDs.subtract(deletedURLs)
+
+        if !deletedURLs.isEmpty {
+            appendLog("✅ Removed \(deletedURLs.count) silent video(s) to Trash.")
+        }
+        if !failures.isEmpty {
+            appendLog("⚠️ Failed to remove \(failures.count) silent video(s).")
         }
     }
     

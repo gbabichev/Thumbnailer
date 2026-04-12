@@ -699,6 +699,23 @@ extension ContentView {
         .frame(minWidth: 760, minHeight: 520)
     }
 
+    var silentVideoManagerSheet: some View {
+        SilentVideoManagerView(
+            results: silentVideoResults,
+            selection: $selectedSilentVideoIDs,
+            isScanning: isScanningSilentVideos,
+            showDeleteConfirmation: $showConfirmDeleteSilentVideos,
+            pendingDeleteCount: pendingSilentVideoDeletion.count,
+            onScan: { scanSilentVideos() },
+            onDeleteSelected: { confirmDeleteSelectedSilentVideos() },
+            onDeleteAll: { confirmDeleteAllSilentVideos() },
+            onDeleteSingle: { deleteSingleSilentVideo($0) },
+            onConfirmDelete: { Task { await actuallyDeleteSilentVideos() } },
+            onClose: { showSilentVideoManager = false }
+        )
+        .frame(minWidth: 760, minHeight: 520)
+    }
+
     private struct ShortVideoManagerView: View {
         @Binding var thresholdSeconds: Double
         let results: [ShortVideoItem]
@@ -862,6 +879,137 @@ extension ContentView {
         }
     }
 
+    private struct SilentVideoManagerView: View {
+        let results: [SilentVideoItem]
+        @Binding var selection: Set<URL>
+        let isScanning: Bool
+        @Binding var showDeleteConfirmation: Bool
+        let pendingDeleteCount: Int
+        let onScan: () -> Void
+        let onDeleteSelected: () -> Void
+        let onDeleteAll: () -> Void
+        let onDeleteSingle: (SilentVideoItem) -> Void
+        let onConfirmDelete: () -> Void
+        let onClose: () -> Void
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Silent Videos")
+                            .font(.title2.weight(.semibold))
+                        Text("Scan loaded video folders, review videos with no audio tracks, then delete ones you do not want.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Done") {
+                        onClose()
+                    }
+                    .keyboardShortcut(.escape, modifiers: [])
+                }
+
+                HStack {
+                    if isScanning {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Scanning…")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(results.count) match\(results.count == 1 ? "" : "es")")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(16)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                HStack {
+                    Button {
+                        onScan()
+                    } label: {
+                        Label(isScanning ? "Scanning" : "Scan Silent Videos", systemImage: "magnifyingglass")
+                    }
+                    .disabled(isScanning)
+
+                    Button(role: .destructive) {
+                        onDeleteSelected()
+                    } label: {
+                        Label("Delete Selected", systemImage: "trash")
+                    }
+                    .disabled(isScanning || selection.isEmpty)
+
+                    Button(role: .destructive) {
+                        onDeleteAll()
+                    } label: {
+                        Label("Delete All", systemImage: "trash.slash")
+                    }
+                    .disabled(isScanning || results.isEmpty)
+
+                    Spacer()
+
+                    if !selection.isEmpty {
+                        Text("\(selection.count) selected")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                List(selection: $selection) {
+                    ForEach(results) { item in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.url.lastPathComponent)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                Text(item.url.deletingLastPathComponent().path)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Text("No audio")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundStyle(.secondary)
+
+                            Button("Reveal") {
+                                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                            }
+                            .buttonStyle(.borderless)
+
+                            Button(role: .destructive) {
+                                onDeleteSingle(item)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .tag(item.id)
+                    }
+                }
+                .overlay {
+                    if !isScanning && results.isEmpty {
+                        ContentUnavailableView(
+                            "No Silent Videos",
+                            systemImage: "speaker.slash",
+                            description: Text("Run scan to populate list.")
+                        )
+                    }
+                }
+            }
+            .padding(20)
+            .alert("Delete silent videos?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Move to Trash", role: .destructive) {
+                    onConfirmDelete()
+                }
+            } message: {
+                Text("This will move \(pendingDeleteCount) silent video(s) to Trash.")
+            }
+        }
+    }
+
     @ToolbarContentBuilder
     var buildToolbar: some ToolbarContent {
         // LEFT: Open (folder picker), Reset (clear UI), Settings (popover)
@@ -918,6 +1066,16 @@ extension ContentView {
                 .keyboardShortcut(".", modifiers: [.command]) // Cmd+.
                 .help("Stop the current job")
             } else {
+                Button { openShortVideoManager() } label: {
+                    Label("Short Videos", systemImage: "film.stack")
+                }
+                .disabled(mode != .videos || leafFolders.isEmpty || isScanningShortVideos)
+
+                Button { openSilentVideoManager() } label: {
+                    Label("Silent Videos", systemImage: "speaker.slash")
+                }
+                .disabled(mode != .videos || leafFolders.isEmpty || isScanningSilentVideos)
+
                 Button { startPhotoThumbnailProcessing() } label: {
                     Label("Process Thumbnails", systemImage: "photo.on.rectangle")
                 }

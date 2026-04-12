@@ -27,6 +27,12 @@ struct ShortVideoItem: Identifiable, Hashable {
     var id: URL { url }
 }
 
+struct SilentVideoItem: Identifiable, Hashable {
+    let url: URL
+
+    var id: URL { url }
+}
+
 enum ProcessingMode { case photos, videos }
 
 // User-facing mode names for the UI
@@ -156,6 +162,15 @@ struct ContentView: View {
 
     /// Controls the short-video deletion confirmation alert.
     @State var showConfirmDeleteShortVideos = false
+
+    /// Controls silent-video manager sheet visibility.
+    @State var showSilentVideoManager = false
+    @State var isScanningSilentVideos = false
+    @State var silentVideoScanTask: Task<Void, Never>? = nil
+    @State var silentVideoResults: [SilentVideoItem] = []
+    @State var selectedSilentVideoIDs: Set<URL> = []
+    @State var pendingSilentVideoDeletion: [SilentVideoItem] = []
+    @State var showConfirmDeleteSilentVideos = false
     
     // MARK: - User Settings
     
@@ -328,6 +343,7 @@ struct ContentView: View {
             
             // Video Tools
             identifyShortVideos: { openShortVideoManager() },
+            identifySilentVideos: { openSilentVideoManager() },
             scanNonMP4Videos: { scanNonMP4VideosMenuAction() },
             trimVideoIntros: { trimVideoFirstSeconds() },
             trimVideoOutros: { trimVideoLastSeconds() },
@@ -358,6 +374,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showShortVideoManager) {
             shortVideoManagerSheet
+        }
+        .sheet(isPresented: $showSilentVideoManager) {
+            silentVideoManagerSheet
         }
         .onChange(of: showLog) { oldValue, newValue in
             if newValue && !oldValue {

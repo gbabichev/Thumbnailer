@@ -34,6 +34,7 @@ struct AppActions {
 
     // Video Tools
     var identifyShortVideos: () -> Void
+    var identifySilentVideos: () -> Void
     var scanNonMP4Videos: () -> Void
     var trimVideoIntros: () -> Void
     var trimVideoOutros: () -> Void
@@ -219,6 +220,15 @@ struct AppMenuCommands: Commands {
             .keyboardShortcut("v", modifiers: [.command, .shift]) // ⌘⇧V
             .disabled(!(actions?.canDoVideoActions ?? false))
             .help("Open the short-video manager to scan, review, and delete matching clips.")
+
+            Button {
+                actions?.identifySilentVideos()
+            } label: {
+                Label("Silent Videos Manager", systemImage: "speaker.slash")
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+            .disabled(!(actions?.canDoVideoActions ?? false))
+            .help("Open manager to scan for videos with no audio tracks, review, and delete.")
 
             Divider()
             
