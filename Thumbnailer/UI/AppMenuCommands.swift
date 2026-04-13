@@ -33,11 +33,6 @@ struct AppActions {
     var validatePhotoThumbs: () -> Void
 
     // Video Tools
-    var identifyShortVideos: () -> Void
-    var identifySilentVideos: () -> Void
-    var scanNonMP4Videos: () -> Void
-    var trimVideoIntros: () -> Void
-    var trimVideoOutros: () -> Void
     var deleteContactlessVideoLeafs: () -> Void
     var moveVideosToParent: () -> Void
     var makeVRContactSheet: () -> Void
@@ -202,56 +197,6 @@ struct AppMenuCommands: Commands {
         }
 
         CommandMenu("Video Tools") {
-            Button {
-                actions?.scanNonMP4Videos()
-            } label: {
-                Label("Scan for Non-MP4", systemImage: "magnifyingglass")
-            }
-            .keyboardShortcut("4", modifiers: [.command, .shift]) // ⌘⇧4
-            //.keyboardShortcut("m", modifiers: [.command, .shift]) // ⌘⇧M
-            .disabled(!(actions?.canDoVideoActions ?? false))
-            .help("Scans and logs videos that are not MP4.")
-
-            Button {
-                actions?.identifyShortVideos()
-            } label: {
-                Label("Short Videos Manager", systemImage: "film")
-            }
-            .keyboardShortcut("v", modifiers: [.command, .shift]) // ⌘⇧V
-            .disabled(!(actions?.canDoVideoActions ?? false))
-            .help("Open the short-video manager to scan, review, and delete matching clips.")
-
-            Button {
-                actions?.identifySilentVideos()
-            } label: {
-                Label("Silent Videos Manager", systemImage: "speaker.slash")
-            }
-            .keyboardShortcut("a", modifiers: [.command, .shift])
-            .disabled(!(actions?.canDoVideoActions ?? false))
-            .help("Open manager to scan for videos with no audio tracks, review, and delete.")
-
-            Divider()
-            
-            Button {
-                actions?.trimVideoIntros()
-            } label: {
-                Label("Trim Video Intros", systemImage: "scissors")
-            }
-            .keyboardShortcut("i", modifiers: [.command, .option]) // ⌘⌥I
-            .disabled(!(actions?.canDoVideoActions ?? false))
-            .help("Remove the first few seconds from all videos")
-
-            Button {
-                actions?.trimVideoOutros()
-            } label: {
-                Label("Trim Video Outros", systemImage: "scissors")
-            }
-            .keyboardShortcut("o", modifiers: [.command, .option]) // ⌘⌥O
-            .disabled(!(actions?.canDoVideoActions ?? false))
-            .help("Remove the last few seconds from all videos")
-            
-            Divider()
-            
             Button {
                 actions?.moveVideosToParent()
             } label: {

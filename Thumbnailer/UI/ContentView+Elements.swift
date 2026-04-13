@@ -278,7 +278,6 @@ extension ContentView {
             videoSheetColumns: $videoSheetColumns,
             videoSheetOptimizePortraitLayout: $videoSheetOptimizePortraitLayout,
             videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
-            videoSecondsToTrim: $videoSecondsToTrim,
             onResetToDefaults: resetSettingsToDefaults,
             showSettingsPopover: $showSettingsPopover
         )
@@ -298,7 +297,6 @@ extension ContentView {
         @Binding var videoSheetColumns: Int
         @Binding var videoSheetOptimizePortraitLayout: Bool
         @Binding var videoSheetShowDurationOverlay: Bool
-        @Binding var videoSecondsToTrim: Int
         let onResetToDefaults: () -> Void
         @Binding var showSettingsPopover: Bool
 
@@ -331,8 +329,7 @@ extension ContentView {
                         videoSheetMaxTiles: $videoSheetMaxTiles,
                         videoSheetColumns: $videoSheetColumns,
                         videoSheetOptimizePortraitLayout: $videoSheetOptimizePortraitLayout,
-                        videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay,
-                        videoSecondsToTrim: $videoSecondsToTrim
+                        videoSheetShowDurationOverlay: $videoSheetShowDurationOverlay
                     )
                     .tabItem { Label("Videos", systemImage: "video") }
                 }
@@ -572,7 +569,6 @@ extension ContentView {
         @Binding var videoSheetColumns: Int
         @Binding var videoSheetOptimizePortraitLayout: Bool
         @Binding var videoSheetShowDurationOverlay: Bool
-        @Binding var videoSecondsToTrim: Int
 
         var body: some View {
             ScrollView {
@@ -643,32 +639,6 @@ extension ContentView {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.vertical, 2)
-
-                    Divider()
-
-                    HStack {
-                        Text("Trimming")
-                            .bold()
-
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.accentColor)
-                            .help("Sets how many seconds to remove from the beginning / end of videos when using 'Trim First N Seconds' tool.")
-                    }
-
-                    VStack(alignment: .leading) {
-                        Text("Seconds to Trim: \(videoSecondsToTrim)")
-
-                        Slider(
-                            value: Binding(
-                                get: { Double(videoSecondsToTrim) },
-                                set: { videoSecondsToTrim = Int($0) }
-                            ),
-                            in: 1...60,
-                            step: 1
-                        )
-                        .help("Choose how many seconds to trim from the beginning or end of videos (1-60 seconds).")
-                    }
-                    .padding(.vertical, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(.trailing, 14)
@@ -680,336 +650,6 @@ extension ContentView {
         }
     }
     
-    // MARK: - Toolbar
-    var shortVideoManagerSheet: some View {
-        ShortVideoManagerView(
-            thresholdSeconds: $shortVideoDurationSeconds,
-            results: shortVideoResults,
-            selection: $selectedShortVideoIDs,
-            isScanning: isScanningShortVideos,
-            showDeleteConfirmation: $showConfirmDeleteShortVideos,
-            pendingDeleteCount: pendingShortVideoDeletion.count,
-            onScan: { scanShortVideos() },
-            onDeleteSelected: { confirmDeleteSelectedShortVideos() },
-            onDeleteAll: { confirmDeleteAllShortVideos() },
-            onDeleteSingle: { deleteSingleShortVideo($0) },
-            onConfirmDelete: { Task { await actuallyDeleteShortVideos() } },
-            onClose: { showShortVideoManager = false }
-        )
-        .frame(minWidth: 760, minHeight: 520)
-    }
-
-    var silentVideoManagerSheet: some View {
-        SilentVideoManagerView(
-            results: silentVideoResults,
-            selection: $selectedSilentVideoIDs,
-            isScanning: isScanningSilentVideos,
-            showDeleteConfirmation: $showConfirmDeleteSilentVideos,
-            pendingDeleteCount: pendingSilentVideoDeletion.count,
-            onScan: { scanSilentVideos() },
-            onDeleteSelected: { confirmDeleteSelectedSilentVideos() },
-            onDeleteAll: { confirmDeleteAllSilentVideos() },
-            onDeleteSingle: { deleteSingleSilentVideo($0) },
-            onConfirmDelete: { Task { await actuallyDeleteSilentVideos() } },
-            onClose: { showSilentVideoManager = false }
-        )
-        .frame(minWidth: 760, minHeight: 520)
-    }
-
-    private struct ShortVideoManagerView: View {
-        @Binding var thresholdSeconds: Double
-        let results: [ShortVideoItem]
-        @Binding var selection: Set<URL>
-        let isScanning: Bool
-        @Binding var showDeleteConfirmation: Bool
-        let pendingDeleteCount: Int
-        let onScan: () -> Void
-        let onDeleteSelected: () -> Void
-        let onDeleteAll: () -> Void
-        let onDeleteSingle: (ShortVideoItem) -> Void
-        let onConfirmDelete: () -> Void
-        let onClose: () -> Void
-
-        private var thresholdMinutes: String {
-            String(format: "%.1f", thresholdSeconds / 60.0)
-        }
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Short Videos")
-                            .font(.title2.weight(.semibold))
-                        Text("Scan loaded video folders, review clips under the threshold, then delete the ones you don't want.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Done") {
-                        onClose()
-                    }
-                    .keyboardShortcut(.escape, modifiers: [])
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Threshold: \(thresholdMinutes) min")
-                            .font(.headline)
-                        Spacer()
-                        if isScanning {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Scanning…")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("\(results.count) match\(results.count == 1 ? "" : "es")")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Slider(value: $thresholdSeconds, in: 30...600, step: 30)
-                        .disabled(isScanning)
-
-                    HStack {
-                        Text("30s")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("10min")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(16)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                HStack {
-                    Button {
-                        onScan()
-                    } label: {
-                        Label(isScanning ? "Scanning" : "Scan Short Videos", systemImage: "magnifyingglass")
-                    }
-                    .disabled(isScanning)
-
-                    Button(role: .destructive) {
-                        onDeleteSelected()
-                    } label: {
-                        Label("Delete Selected", systemImage: "trash")
-                    }
-                    .disabled(isScanning || selection.isEmpty)
-
-                    Button(role: .destructive) {
-                        onDeleteAll()
-                    } label: {
-                        Label("Delete All", systemImage: "trash.slash")
-                    }
-                    .disabled(isScanning || results.isEmpty)
-
-                    Spacer()
-
-                    if !selection.isEmpty {
-                        Text("\(selection.count) selected")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                List(selection: $selection) {
-                    ForEach(results) { item in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.url.lastPathComponent)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                Text(item.url.deletingLastPathComponent().path)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-
-                            Spacer()
-
-                            Text(shortVideoDurationText(item.duration))
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundStyle(.secondary)
-
-                            Button("Reveal") {
-                                NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                            }
-                            .buttonStyle(.borderless)
-
-                            Button(role: .destructive) {
-                                onDeleteSingle(item)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        .tag(item.id)
-                    }
-                }
-                .overlay {
-                    if !isScanning && results.isEmpty {
-                        ContentUnavailableView(
-                            "No Short Videos",
-                            systemImage: "film",
-                            description: Text("Run a scan to populate this list.")
-                        )
-                    }
-                }
-            }
-            .padding(20)
-            .alert("Delete short videos?", isPresented: $showDeleteConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Move to Trash", role: .destructive) {
-                    onConfirmDelete()
-                }
-            } message: {
-                Text("This will move \(pendingDeleteCount) short video(s) to the Trash.")
-            }
-        }
-
-        private func shortVideoDurationText(_ seconds: Double) -> String {
-            if seconds < 60 {
-                return String(format: "%.1fs", seconds)
-            }
-
-            let minutes = Int(seconds / 60)
-            let remainingSeconds = seconds.truncatingRemainder(dividingBy: 60)
-            return String(format: "%dm %.1fs", minutes, remainingSeconds)
-        }
-    }
-
-    private struct SilentVideoManagerView: View {
-        let results: [SilentVideoItem]
-        @Binding var selection: Set<URL>
-        let isScanning: Bool
-        @Binding var showDeleteConfirmation: Bool
-        let pendingDeleteCount: Int
-        let onScan: () -> Void
-        let onDeleteSelected: () -> Void
-        let onDeleteAll: () -> Void
-        let onDeleteSingle: (SilentVideoItem) -> Void
-        let onConfirmDelete: () -> Void
-        let onClose: () -> Void
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Silent Videos")
-                            .font(.title2.weight(.semibold))
-                        Text("Scan loaded video folders, review videos with no audio tracks, then delete ones you do not want.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Done") {
-                        onClose()
-                    }
-                    .keyboardShortcut(.escape, modifiers: [])
-                }
-
-                HStack {
-                    if isScanning {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Scanning…")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("\(results.count) match\(results.count == 1 ? "" : "es")")
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(16)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                HStack {
-                    Button {
-                        onScan()
-                    } label: {
-                        Label(isScanning ? "Scanning" : "Scan Silent Videos", systemImage: "magnifyingglass")
-                    }
-                    .disabled(isScanning)
-
-                    Button(role: .destructive) {
-                        onDeleteSelected()
-                    } label: {
-                        Label("Delete Selected", systemImage: "trash")
-                    }
-                    .disabled(isScanning || selection.isEmpty)
-
-                    Button(role: .destructive) {
-                        onDeleteAll()
-                    } label: {
-                        Label("Delete All", systemImage: "trash.slash")
-                    }
-                    .disabled(isScanning || results.isEmpty)
-
-                    Spacer()
-
-                    if !selection.isEmpty {
-                        Text("\(selection.count) selected")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                List(selection: $selection) {
-                    ForEach(results) { item in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.url.lastPathComponent)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                Text(item.url.deletingLastPathComponent().path)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-
-                            Spacer()
-
-                            Text("No audio")
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundStyle(.secondary)
-
-                            Button("Reveal") {
-                                NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                            }
-                            .buttonStyle(.borderless)
-
-                            Button(role: .destructive) {
-                                onDeleteSingle(item)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        .tag(item.id)
-                    }
-                }
-                .overlay {
-                    if !isScanning && results.isEmpty {
-                        ContentUnavailableView(
-                            "No Silent Videos",
-                            systemImage: "speaker.slash",
-                            description: Text("Run scan to populate list.")
-                        )
-                    }
-                }
-            }
-            .padding(20)
-            .alert("Delete silent videos?", isPresented: $showDeleteConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Move to Trash", role: .destructive) {
-                    onConfirmDelete()
-                }
-            } message: {
-                Text("This will move \(pendingDeleteCount) silent video(s) to Trash.")
-            }
-        }
-    }
-
     @ToolbarContentBuilder
     var buildToolbar: some ToolbarContent {
         // LEFT: Open (folder picker), Reset (clear UI), Settings (popover)
@@ -1066,16 +706,6 @@ extension ContentView {
                 .keyboardShortcut(".", modifiers: [.command]) // Cmd+.
                 .help("Stop the current job")
             } else {
-                Button { openShortVideoManager() } label: {
-                    Label("Short Videos", systemImage: "film.stack")
-                }
-                .disabled(mode != .videos || leafFolders.isEmpty || isScanningShortVideos)
-
-                Button { openSilentVideoManager() } label: {
-                    Label("Silent Videos", systemImage: "speaker.slash")
-                }
-                .disabled(mode != .videos || leafFolders.isEmpty || isScanningSilentVideos)
-
                 Button { startPhotoThumbnailProcessing() } label: {
                     Label("Process Thumbnails", systemImage: "photo.on.rectangle")
                 }

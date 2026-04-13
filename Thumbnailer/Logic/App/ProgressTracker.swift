@@ -55,24 +55,6 @@ class ProgressTracker {
         updateETA(estimateETA())
     }
     
-    /// Set fractional progress for current item (useful for nested operations)
-    /// - Parameter fraction: Progress within current item (0.0-1.0)
-    ///
-    /// Example: Processing folder 3 of 10, and 40% done with that folder:
-    /// ```
-    /// progressTracker.updateWithFraction(0.4)
-    /// // Shows: (2 + 0.4) / 10 = 24% total progress
-    /// ```
-    func updateWithFraction(_ fraction: Double) {
-        let clampedFraction = max(0, min(1, fraction))
-        let progress = (Double(completed) + clampedFraction) / Double(total)
-        updateProgress(progress)
-
-        let effectiveCompleted = min(Double(total), Double(completed) + clampedFraction)
-        updateETA(estimateETA(effectiveCompleted: effectiveCompleted))
-    }
-    
-    
     /// Mark as complete and clear progress UI
     func finish() {
         updateProgress(nil)

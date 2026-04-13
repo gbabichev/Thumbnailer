@@ -20,19 +20,6 @@ struct LeafFolder: Identifiable, Hashable {
     var displayName: String { url.lastPathComponent }
 }
 
-struct ShortVideoItem: Identifiable, Hashable {
-    let url: URL
-    let duration: Double
-
-    var id: URL { url }
-}
-
-struct SilentVideoItem: Identifiable, Hashable {
-    let url: URL
-
-    var id: URL { url }
-}
-
 enum ProcessingMode { case photos, videos }
 
 // User-facing mode names for the UI
@@ -77,7 +64,6 @@ private enum SettingsDefaults {
     static let videoSheetMaxTiles = 9
     static let videoSheetColumns = 3
     static let videoSheetOptimizePortraitLayout = true
-    static let videoSecondsToTrim = 60
     static let shortVideoDurationSeconds = 120.0
 }
 
@@ -142,43 +128,10 @@ struct ContentView: View {
     /// Controls the in-app About overlay visibility.
     @State var showAboutOverlay = false
 
-    /// Controls the short-video manager sheet visibility.
-    @State var showShortVideoManager = false
-
-    /// True while the short-video manager is actively scanning.
-    @State var isScanningShortVideos = false
-
-    /// Active task backing the short-video scan.
-    @State var shortVideoScanTask: Task<Void, Never>? = nil
-
-    /// Current short-video scan results shown in the manager UI.
-    @State var shortVideoResults: [ShortVideoItem] = []
-
-    /// Selected short-video rows in the manager list.
-    @State var selectedShortVideoIDs: Set<URL> = []
-
-    /// Pending short-video deletion candidates awaiting confirmation.
-    @State var pendingShortVideoDeletion: [ShortVideoItem] = []
-
-    /// Controls the short-video deletion confirmation alert.
-    @State var showConfirmDeleteShortVideos = false
-
-    /// Controls silent-video manager sheet visibility.
-    @State var showSilentVideoManager = false
-    @State var isScanningSilentVideos = false
-    @State var silentVideoScanTask: Task<Void, Never>? = nil
-    @State var silentVideoResults: [SilentVideoItem] = []
-    @State var selectedSilentVideoIDs: Set<URL> = []
-    @State var pendingSilentVideoDeletion: [SilentVideoItem] = []
-    @State var showConfirmDeleteSilentVideos = false
-    
     // MARK: - User Settings
     
     /// Number of max tiles for video contact sheets.
     @AppStorage("videoSheetMaxTiles") var videoSheetMaxTiles: Int = SettingsDefaults.videoSheetMaxTiles
-    
-    /// Seconds to trim from the **start** of videos when requested.
-    @AppStorage("videoSecondsToTrim") var videoSecondsToTrim: Int = SettingsDefaults.videoSecondsToTrim
     
     /// Minimum number of images required inside a leaf folder to be considered.
     @AppStorage("minImagesPerLeaf") var minImagesPerLeaf: Int = SettingsDefaults.minImagesPerLeaf
@@ -252,7 +205,6 @@ struct ContentView: View {
         videoSheetMaxTiles = SettingsDefaults.videoSheetMaxTiles
         videoSheetColumns = SettingsDefaults.videoSheetColumns
         videoSheetOptimizePortraitLayout = SettingsDefaults.videoSheetOptimizePortraitLayout
-        videoSecondsToTrim = SettingsDefaults.videoSecondsToTrim
     }
     
     /// Current workspace mode; gates UI affordances for photos vs. videos.
@@ -342,11 +294,6 @@ struct ContentView: View {
             validatePhotoThumbs: {Task { await validatePhotoThumbsMenuAction()}},
             
             // Video Tools
-            identifyShortVideos: { openShortVideoManager() },
-            identifySilentVideos: { openSilentVideoManager() },
-            scanNonMP4Videos: { scanNonMP4VideosMenuAction() },
-            trimVideoIntros: { trimVideoFirstSeconds() },
-            trimVideoOutros: { trimVideoLastSeconds() },
             deleteContactlessVideoLeafs: { deleteContactlessVideoFiles() },
             moveVideosToParent: { moveVideosToParentMenuAction() },
             makeVRContactSheet: { makeVRVideoSheets() },
@@ -371,12 +318,6 @@ struct ContentView: View {
             else {
                 Text("This will move \(pendingContactlessVictims.count) \(mediaType) folder(s) without a matching contact sheet to the Trash.")
             }
-        }
-        .sheet(isPresented: $showShortVideoManager) {
-            shortVideoManagerSheet
-        }
-        .sheet(isPresented: $showSilentVideoManager) {
-            silentVideoManagerSheet
         }
         .onChange(of: showLog) { oldValue, newValue in
             if newValue && !oldValue {

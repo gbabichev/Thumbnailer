@@ -50,8 +50,4 @@ enum AppConstants {
         return videoExts.union(unsupportedVideoExts)
     }()
     
-    /// Human-readable list of supported video formats for user messages
-    static let supportedVideoFormatsString: String = {
-        return videoExts.sorted().joined(separator: ", ")
-    }()
 }
