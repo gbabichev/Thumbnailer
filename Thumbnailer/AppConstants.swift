@@ -34,7 +34,6 @@ enum AppConstants {
     // MARK: - Video Extensions
     
     /// Supported video file extensions for processing (lowercased, no dot)
-    /// These formats can be processed by FFmpeg and AVFoundation
     static let videoExts: Set<String> = [
         "mp4"
     ]

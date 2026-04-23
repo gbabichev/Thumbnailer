@@ -41,8 +41,6 @@ smart media organization tools. ✨
 ### 🎬 Video Processing
 
 -   **Video Contact Sheets** 🎞️ → Smart frame sampling & layout
--   **Trim Intros/Outros** ✂️ → Cut seconds off start/end
--   **Flatten Folders** 📂 → Move videos up one level
 
 ### 🛠️ Specialized Tools
 
@@ -53,11 +51,6 @@ smart media organization tools. ✨
     - Detect folders with low photo count (customizable)
     - Delete folders with no contact sheets
 -   **Video Tools**
-    - Scan for Non-MP4's 
-    - Identify short videos (customizable)
-    - Trim MP4 intros (customizable)
-    - Trim MP4 outros (customizable)
-    - Move videos from individual subfolders to their parent folder.
     - Delete videos with no contact sheets in the parent. 
 
 
@@ -76,11 +69,6 @@ smart media organization tools. ✨
 ### 📝 Logging
 
 - Persistent logs in `~/Library/Logs/Thumbnailer/`
-
-## 🔍 Troubleshooting
-
-- **Running Slow?** - Hit the "Hide Log" eye button. If you're processing thousands of folders really quickly (like deleting thumbnail folders, or JPG/HEIC conversion), writing to the UI can lag. The text log will continue to update 
-
 
 ## 🖥️ Install & Minimum Requirements
 
@@ -106,8 +94,8 @@ open thumbnailer.xcodeproj
 ## 📝 Changelog
 
 ### 1.4.1
-- Improved progress bar tracking.
-- Improved video scanning, introduced Short Video Manager.
+- Improved performance and progress reporting. 
+- Realigned app with core values, removed unnecessary Video Tools. 
 
 ### 1.4.0
 - Added a toggle for optimizing portrait video contact sheets.
